@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0b0e15">
+  <title>KEYSTRIKE V3 — Typing Arena</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body data-theme="cyber">
+
+<div class="background" id="background"></div>
+
+<header class="navbar">
+  <div class="nav-container">
+
+    <a href="#" class="logo" id="logo">
+      <span class="logo-icon">⌘</span>
+      KEY<span class="accent">STRIKE</span>
+      <small>V3</small>
+    </a>
+
+    <nav class="nav-links">
+      <button class="nav-btn active" data-page="type">⌨ <span>Type</span></button>
+      <button class="nav-btn" data-page="race">🏎 <span>Race</span></button>
+      <button class="nav-btn" data-page="survival">⚔ <span>Survival</span></button>
+      <button class="nav-btn" data-page="rush">⚡ <span>Rush</span></button>
+      <button class="nav-btn" data-page="stats">▥ <span>Stats</span></button>
+    </nav>
+
+    <div class="nav-actions">
+      <button class="icon-btn" id="quickSound" title="Toggle sound">♫</button>
+      <button class="icon-btn" id="settingsButton" title="Settings">⚙</button>
+      <button class="profile-btn" id="profileButton">
+        <span class="avatar">G</span>
+        <span class="profile-name">Guest</span>
+      </button>
+    </div>
+
+  </div>
+</header>
+
+<main class="container">
+
+  <!-- TYPING TEST -->
+
+  <section id="typePage" class="page active">
+
+    <div class="page-heading">
+      <div>
+        <span class="eyebrow">⚡ PRECISION IS EVERYTHING</span>
+        <h1>Speed <span>test.</span></h1>
+      </div>
+
+      <div class="personal-best">
+        <span>PERSONAL BEST</span>
+        <strong id="personalBest">0 WPM</strong>
+      </div>
+    </div>
+
+    <div class="settings-bar">
+
+      <div class="segmented">
+        <button class="segment active" data-mode="words">Words</button>
+        <button class="segment" data-mode="quote">Quote</button>
+        <button class="segment" data-mode="code">Code</button>
+      </div>
+
+      <div class="segmented">
+        <button class="segment" data-time="15">15</button>
+        <button class="segment active" data-time="30">30</button>
+        <button class="segment" data-time="60">60</button>
+        <button class="segment" data-time="120">120</button>
+      </div>
+
+      <div class="segmented">
+        <button class="segment active" data-difficulty="common">Common</button>
+        <button class="segment" data-difficulty="advanced">Advanced</button>
+      </div>
+
+      <button class="option-btn" id="punctuationButton">@ Punctuation</button>
+      <button class="option-btn" id="numbersButton"># Numbers</button>
+
+      <button class="option-btn" id="restartButton">↻</button>
+
+    </div>
+
+    <div class="typing-arena" id="typingArena">
+
+      <div class="arena-top">
+
+        <div class="timer-block">
+          <strong id="timer">30</strong>
+          <span>left</span>
+        </div>
+
+        <div class="live-stats">
+          <div><strong id="wpm">0</strong><span>WPM</span></div>
+          <div><strong id="accuracy">100</strong><span>ACC</span></div>
+          <div><strong id="consistency">100</strong><span>CONS</span></div>
+        </div>
+
+        <button class="quit-btn" id="quitButton">Quit</button>
+
+      </div>
+
+      <div class="typing-wrapper" id="typingWrapper">
+
+        <div class="words-viewport" id="wordsViewport">
+          <div class="words-display" id="wordsDisplay"></div>
+          <div class="typing-caret" id="typingCaret"></div>
+        </div>
+
+        <textarea
+          id="typingInput"
+          class="typing-input"
+          autocomplete="off"
+          autocapitalize="off"
+          spellcheck="false"
+          aria-label="Typing input"
+        ></textarea>
+
+        <div class="focus-hint" id="focusHint">
+          CLICK HERE TO FOCUS
+        </div>
+
+      </div>
+
+      <div class="keyboard-wrapper">
+
+        <div class="keyboard" id="keyboard">
+
+          <div class="keyboard-row">
+            <div class="key" data-key="`">`</div>
+            <div class="key" data-key="1">1</div>
+            <div class="key" data-key="2">2</div>
+            <div class="key" data-key="3">3</div>
+            <div class="key" data-key="4">4</div>
+            <div class="key" data-key="5">5</div>
+            <div class="key" data-key="6">6</div>
+            <div class="key" data-key="7">7</div>
+            <div class="key" data-key="8">8</div>
+            <div class="key" data-key="9">9</div>
+            <div class="key" data-key="0">0</div>
+            <div class="key" data-key="-">-</div>
+            <div class="key" data-key="=">=</div>
+          </div>
+
+          <div class="keyboard-row">
+            <div class="key" data-key="q">Q</div>
+            <div class="key" data-key="w">W</div>
+            <div class="key" data-key="e">E</div>
+            <div class="key" data-key="r">R</div>
+            <div class="key" data-key="t">T</div>
+            <div class="key" data-key="y">Y</div>
+            <div class="key" data-key="u">U</div>
+            <div class="key" data-key="i">I</div>
+            <div class="key" data-key="o">O</div>
+            <div class="key" data-key="p">P</div>
+            <div class="key" data-key="[">[</div>
+            <div class="key" data-key="]">]</div>
+            <div class="key" data-key="\">\</div>
+          </div>
+
+          <div class="keyboard-row">
+            <div class="key" data-key="a">A</div>
+            <div class="key" data-key="s">S</div>
+            <div class="key" data-key="d">D</div>
+            <div class="key" data-key="f">F</div>
+            <div class="key" data-key="g">G</div>
+            <div class="key" data-key="h">H</div>
+            <div class="key" data-key="j">J</div>
+            <div class="key" data-key="k">K</div>
+            <div class="key" data-key="l">L</div>
+            <div class="key" data-key=";">;</div>
+            <div class="key" data-key="'">'</div>
+          </div>
+
+          <div class="keyboard-row">
+            <div class="key" data-key="z">Z</div>
+            <div class="key" data-key="x">X</div>
+            <div class="key" data-key="c">C</div>
+            <div class="key" data-key="v">V</div>
+            <div class="key" data-key="b">B</div>
+            <div class="key" data-key="n">N</div>
+            <div class="key" data-key="m">M</div>
+            <div class="key" data-key=",">,</div>
+            <div class="key" data-key=".">.</div>
+            <div class="key" data-key="/">/</div>
+          </div>
+
+          <div class="keyboard-row">
+            <div class="key space-key" data-key=" ">SPACE</div>
+          </div>
+
+        </div>
+
+        <div class="finger-legend">
+          <span><i style="background:#ff5263"></i>L pinky</span>
+          <span><i style="background:#ff9944"></i>L ring</span>
+          <span><i style="background:#eabf45"></i>L middle</span>
+          <span><i style="background:#70df8c"></i>L index</span>
+          <span><i style="background:#59aaff"></i>R index</span>
+          <span><i style="background:#ad7aff"></i>R middle</span>
+          <span><i style="background:#ff75b5"></i>R ring</span>
+          <span><i style="background:#30c5cd"></i>R pinky</span>
+        </div>
+
+      </div>
+
+      <div class="arena-bottom">
+        <span><kbd>Tab</kbd> + <kbd>Enter</kbd> restart</span>
+        <span><kbd>Esc</kbd> reset</span>
+        <span>KEYSTRIKE ⚡</span>
+      </div>
+
+    </div>
+
+    <div class="below-arena">
+      <span id="sessionStatus">● READY TO TYPE</span>
+      <span>Focus on accuracy. Speed will follow.</span>
+    </div>
+
+  </section>
+
+  <!-- RACING -->
+
+  <section id="racePage" class="page">
+
+    <div class="page-heading">
+      <div>
+        <span class="eyebrow">🏎 KEYSTRIKE RACING</span>
+        <h1>Typing <span>race.</span></h1>
+      </div>
+    </div>
+
+    <div class="race-controls">
+
+      <label>
+        BOT DIFFICULTY
+        <select id="raceDifficulty">
+          <option value="easy">Easy — 25-40 WPM</option>
+          <option value="medium" selected>Medium — 40-65 WPM</option>
+          <option value="hard">Hard — 65-95 WPM</option>
+          <option value="insane">Insane — 95-130 WPM</option>
+        </select>
+      </label>
+
+      <button class="primary-btn" id="startRaceButton">
+        ⚡ START RACE
+      </button>
+
+    </div>
+
+    <div class="race-arena">
+
+      <div class="race-header">
+        <span>🏁 FINISH LINE</span>
+        <span id="raceStatus">WAITING FOR PLAYERS</span>
+      </div>
+
+      <div id="raceTracks" class="race-tracks"></div>
+
+      <div class="race-countdown" id="raceCountdown"></div>
+
+    </div>
+
+    <div class="race-typing">
+
+      <div class="race-info">
+        <span>YOUR SPEED: <strong id="raceWpm">0 WPM</strong></span>
+        <span>PROGRESS: <strong id="raceProgress">0%</strong></span>
+      </div>
+
+      <div class="race-text" id="raceText">
+        Press START RACE to begin.
+      </div>
+
+      <input
+        id="raceInput"
+        type="text"
+        autocomplete="off"
+        spellcheck="false"
+        placeholder="Start a race first..."
+        disabled
+      >
+
+    </div>
+
+    <div class="race-result" id="raceResult" hidden></div>
+
+  </section>
+
+  <!-- SURVIVAL -->
+
+  <section id="survivalPage" class="page">
+
+    <div class="page-heading">
+      <div>
+        <span class="eyebrow">⚔ HARDCORE MODE</span>
+        <h1>Typing <span>survival.</span></h1>
+      </div>
+    </div>
+
+    <div class="game-card">
+
+      <div class="game-top">
+        <div>❤️ HEALTH: <strong id="survivalHealth">100</strong></div>
+        <div>🏆 SCORE: <strong id="survivalScore">0</strong></div>
+      </div>
+
+      <div class="health-track">
+        <div id="healthFill"></div>
+      </div>
+
+      <div class="game-word" id="survivalWord">READY?</div>
+
+      <input
+        id="survivalInput"
+        class="game-input"
+        autocomplete="off"
+        placeholder="Type the word..."
+        disabled
+      >
+
+      <button class="primary-btn" id="startSurvivalButton">
+        ⚔ START SURVIVAL
+      </button>
+
+      <p id="survivalMessage">
+        Every wrong keystroke costs 10 health. Survive as long as possible!
+      </p>
+
+    </div>
+
+  </section>
+
+  <!-- SPEED RUSH -->
+
+  <section id="rushPage" class="page">
+
+    <div class="page-heading">
+      <div>
+        <span class="eyebrow">⚡ 60 SECOND CHALLENGE</span>
+        <h1>Speed <span>rush.</span></h1>
+      </div>
+    </div>
+
+    <div class="game-card">
+
+      <div class="game-top">
+        <div>⏱ TIME: <strong id="rushTimer">60</strong></div>
+        <div>⚡ SCORE: <strong id="rushScore">0</strong></div>
+      </div>
+
+      <div class="game-word" id="rushWord">READY?</div>
+
+      <input
+        id="rushInput"
+        class="game-input"
+        autocomplete="off"
+        placeholder="Type the word..."
+        disabled
+      >
+
+      <button class="primary-btn" id="startRushButton">
+        ⚡ START SPEED RUSH
+      </button>
+
+      <p id="rushMessage">
+        Type as many words as you can in 60 seconds.
+      </p>
+
+    </div>
+
+  </section>
+
+  <!-- STATS -->
+
+  <section id="statsPage" class="page">
+
+    <div class="page-heading">
+      <div>
+        <span class="eyebrow">◈ PERFORMANCE ANALYTICS</span>
+        <h1>Your <span>statistics.</span></h1>
+      </div>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-card"><span>PERSONAL BEST</span><strong id="statsBest">0</strong><small>WPM</small></div>
+      <div class="stat-card"><span>TESTS COMPLETED</span><strong id="statsTests">0</strong><small>Tests</small></div>
+      <div class="stat-card"><span>AVERAGE SPEED</span><strong id="statsAverage">0</strong><small>WPM</small></div>
+      <div class="stat-card"><span>BEST RACE RESULT</span><strong id="statsRace">—</strong><small>Position</small></div>
+    </div>
+
+    <div class="history-card">
+      <h3>RECENT TESTS</h3>
+      <div id="testHistory">No completed tests yet.</div>
+    </div>
+
+  </section>
+
+</main>
+
+<!-- SETTINGS PANEL -->
+
+<div class="settings-overlay" id="settingsOverlay"></div>
+
+<aside class="settings-panel" id="settingsPanel">
+
+  <div class="settings-header">
+    <div>
+      <span class="eyebrow">KEYSTRIKE CONTROL CENTER</span>
+      <h2>⚙ Settings</h2>
+    </div>
+    <button class="close-settings" id="closeSettings">✕</button>
+  </div>
+
+  <div class="settings-scroll">
+
+    <div class="settings-section">
+      <h3>🎨 APPEARANCE</h3>
+
+      <div class="setting-item vertical">
+        <label>Theme</label>
+        <div class="theme-options">
+          <button class="theme-choice active" data-theme-choice="cyber">Cyber</button>
+          <button class="theme-choice" data-theme-choice="ocean">Ocean</button>
+          <button class="theme-choice" data-theme-choice="inferno">Inferno</button>
+          <button class="theme-choice" data-theme-choice="matrix">Matrix</button>
+        </div>
+      </div>
+
+      <div class="setting-item">
+        <label>Font Size <small id="fontSizeValue">29px</small></label>
+        <input type="range" id="fontSizeSetting" min="18" max="36" value="29">
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <h3>✨ ANIMATIONS</h3>
+
+      <div class="setting-item">
+        <label>Typing Animations</label>
+        <input type="checkbox" class="toggle" id="typingAnimations" checked>
+      </div>
+
+      <div class="setting-item">
+        <label>Smooth Caret</label>
+        <input type="checkbox" class="toggle" id="smoothCaret" checked>
+      </div>
+
+      <div class="setting-item">
+        <label>Screen Shake</label>
+        <input type="checkbox" class="toggle" id="screenShake">
+      </div>
+
+      <div class="setting-item">
+        <label>RGB Keyboard</label>
+        <input type="checkbox" class="toggle" id="rgbKeyboard" checked>
+      </div>
+
+      <div class="setting-item">
+        <label>Particle Effects</label>
+        <input type="checkbox" class="toggle" id="particlesEnabled" checked>
+      </div>
+
+      <div class="setting-item">
+        <label>Animated Background</label>
+        <input type="checkbox" class="toggle" id="animatedBackground" checked>
+      </div>
+
+    </div>
+
+    <div class="settings-section">
+      <h3>🔊 AUDIO</h3>
+
+      <div class="setting-item">
+        <label>Keyboard Sounds</label>
+        <input type="checkbox" class="toggle" id="keyboardSounds" checked>
+      </div>
+
+      <div class="setting-item">
+        <label>Error Sounds</label>
+        <input type="checkbox" class="toggle" id="errorSounds" checked>
+      </div>
+
+      <div class="setting-item">
+        <label>Sound Style</label>
+        <select id="soundStyle">
+          <option value="mechanical">Mechanical</option>
+          <option value="soft">Soft</option>
+          <option value="arcade">Arcade</option>
+        </select>
+      </div>
+
+      <div class="setting-item">
+        <label>Volume <small id="volumeValue">35%</small></label>
+        <input type="range" id="volumeSetting" min="0" max="100" value="35">
+      </div>
+
+    </div>
+
+    <button class="reset-settings" id="resetSettings">↻ RESET ALL SETTINGS</button>
+
+  </div>
+
+</aside>
+
+<!-- RESULTS MODAL -->
+
+<div class="modal-overlay" id="resultsModal">
+
+  <div class="results-card">
+
+    <span class="eyebrow">⚡ SESSION COMPLETE</span>
+    <h2>YOUR RESULTS<span>.</span></h2>
+
+    <div class="result-main">
+      <div><strong id="finalWpm">0</strong><span>WPM</span></div>
+      <div><strong id="finalAccuracy">100%</strong><span>ACCURACY</span></div>
+    </div>
+
+    <div class="result-details">
+      <div><span>Correct characters</span><strong id="finalCorrect">0</strong></div>
+      <div><span>Incorrect characters</span><strong id="finalIncorrect">0</strong></div>
+      <div><span>Consistency</span><strong id="finalConsistency">100%</strong></div>
+    </div>
+
+    <p id="newRecordMessage" class="new-record" hidden>🏆 NEW PERSONAL BEST!</p>
+
+    <button class="primary-btn" id="tryAgainButton">⚡ TRY AGAIN</button>
+
+  </div>
+
+</div>
+
+<footer class="footer">
+  <span>© 2026 KEYSTRIKE</span>
+  <span>PRECISION IS EVERYTHING ⚡</span>
+  <span>V3.0</span>
+</footer>
+
+<script src="script.js"></script>
+
+</body>
+</html>
