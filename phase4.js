@@ -1,55 +1,77 @@
 "use strict";
 
-/* ==================================================
+/* =====================================================
    KEYSTRIKE V5
-   PHASE 4 MULTIPLAYER RACING
-   EXISTING SCRIPT.JS INTEGRATION
-================================================== */
+   MULTIPLAYER PHASE 4 — UPDATED ENGINE
+
+   Features:
+   - Host-only race start
+   - Room settings
+   - Synchronized countdown
+   - Shared passage
+   - Live progress and WPM
+   - Animated tracks
+   - Race completion
+   - Leaderboard
+   - Winner announcement
+   - Rematch
+   - Realtime synchronization
+===================================================== */
 
 (() => {
 
 const el = id => document.getElementById(id);
 
-const client = db;
-
-if (!client) {
-  console.error("KEYSTRIKE: Supabase unavailable");
+if (typeof db === "undefined" || !db) {
+  console.error("KEYSTRIKE: Supabase unavailable.");
   return;
 }
 
-let activeRound = null;
-let raceInterval = null;
+const client = db;
 
-let raceComplete = false;
+const RACE_TIMEOUT = 180;
+const PROGRESS_INTERVAL = 450;
+const REFRESH_INTERVAL = 2500;
+
+let activeRound = null;
+
+let clockTimer = null;
+let syncTimer = null;
+let progressTimer = null;
+
+let raceChannel = null;
+
 let raceRunning = false;
+let raceComplete = false;
 
 let progressBusy = false;
 let progressPending = false;
 
 let lastProgressSent = 0;
+let lastSubmittedLength = 0;
 
-let raceChannel = null;
-let raceGeneration = 0;
+let resultsLoadedFor = null;
 
-let raceClockOffset = 0;
+let engineGeneration = 0;
+let enteringRoom = false;
+let startingRace = false;
+let resettingRoom = false;
 
-let resultsRoundId = null;
+const input = el("multiplayerInput");
 
-const RACE_TIMEOUT = 180;
-const PROGRESS_INTERVAL = 400;
-
-const raceInput = el("multiplayerInput");
+/* =====================================================
+   UTILITIES
+===================================================== */
 
 function notify(text, type = "") {
   mpMessage(text, type);
 }
 
-function currentRoomId() {
-  return mpRoom?.id || null;
-}
-
-function currentUserId() {
-  return currentUser?.id || null;
+function showView(view) {
+  el("multiplayerHome").hidden = view !== "home";
+  el("multiplayerLobby").hidden = view !== "lobby";
+  el("multiplayerRace").hidden = view !== "race";
+  el("multiplayerResults").hidden = view !== "results";
 }
 
 function isHost() {
@@ -60,13 +82,6 @@ function isHost() {
   );
 }
 
-function showView(view) {
-  el("multiplayerHome").hidden = view !== "home";
-  el("multiplayerLobby").hidden = view !== "lobby";
-  el("multiplayerRace").hidden = view !== "race";
-  el("multiplayerResults").hidden = view !== "results";
-}
-
 function playerName(player) {
   return (
     player.profile?.username ||
@@ -74,54 +89,175 @@ function playerName(player) {
   );
 }
 
-function stopClock() {
-  clearInterval(raceInterval);
-  raceInterval = null;
+function getMyPlayer() {
+  return mpPlayers.find(
+    player => player.user_id === currentUser?.id
+  );
+}
+
+function clearRaceTimers() {
+  clearInterval(clockTimer);
+  clearInterval(syncTimer);
+  clearTimeout(progressTimer);
+
+  clockTimer = null;
+  syncTimer = null;
+  progressTimer = null;
 }
 
 function resetRaceState() {
-  stopClock();
+  clearRaceTimers();
 
   activeRound = null;
 
-  raceComplete = false;
   raceRunning = false;
+  raceComplete = false;
 
   progressBusy = false;
   progressPending = false;
 
   lastProgressSent = 0;
-  resultsRoundId = null;
+  lastSubmittedLength = 0;
 
-  raceInput.disabled = true;
-  raceInput.value = "";
+  resultsLoadedFor = null;
+
+  input.disabled = true;
+  input.value = "";
 }
 
-async function databaseTime() {
-  /*
-    Estimate database clock offset using the
-    race round's server-generated timestamp
-    indirectly through the HTTP Date header
-    when available.
+/* =====================================================
+   ROOM SETTINGS
+===================================================== */
 
-    Date.now() remains the fallback.
-  */
-
-  return Date.now() + raceClockOffset;
+function getSelectedSettings() {
+  return window.KeystrikeRaceSettings?.get() || {
+    game_mode: "classic",
+    text_mode: "words",
+    time_limit: 60,
+    max_players: 4,
+    custom_passage: null
+  };
 }
 
-function raceStartMs() {
-  return activeRound
-    ? new Date(activeRound.started_at).getTime()
-    : 0;
+async function saveRoomSettings(roomId) {
+  const settings = getSelectedSettings();
+
+  const { error } = await client.rpc(
+    "update_race_room_settings",
+    {
+      target_room_id: roomId,
+
+      selected_game_mode:
+        settings.game_mode,
+
+      selected_text_mode:
+        settings.text_mode,
+
+      selected_time_limit:
+        Number(settings.time_limit),
+
+      selected_max_players:
+        Number(settings.max_players),
+
+      selected_custom_passage:
+        settings.custom_passage
+    }
+  );
+
+  if (error) throw error;
 }
 
-/* ==================================================
-   LOBBY
-================================================== */
+/* =====================================================
+   CREATE ROOM WITH SETTINGS
+===================================================== */
+
+async function createConfiguredRoom() {
+  if (enteringRoom || mpBusy) return;
+
+  if (!currentUser) {
+    openAccount();
+    return;
+  }
+
+  enteringRoom = true;
+  mpBusy = true;
+
+  const button = el("createRoomButton");
+  button.disabled = true;
+
+  notify("Creating your multiplayer arena...");
+
+  try {
+    const settings = getSelectedSettings();
+
+    if (
+      settings.game_mode === "custom" ||
+      settings.text_mode === "custom"
+    ) {
+      const passage = settings.custom_passage || "";
+
+      if (
+        passage.trim().length < 30 ||
+        passage.length > 1000
+      ) {
+        throw new Error(
+          "Custom passage must contain 30–1000 characters."
+        );
+      }
+    }
+
+    const { data, error } = await client.rpc(
+      "create_race_room"
+    );
+
+    if (error) throw error;
+
+    const created = Array.isArray(data)
+      ? data[0]
+      : data;
+
+    if (!created?.room_id) {
+      throw new Error("Room creation failed.");
+    }
+
+    const roomId = created.room_id;
+
+    try {
+      await saveRoomSettings(roomId);
+    } catch (settingsError) {
+      // Prevent leaving an unwanted room behind.
+      await client.rpc("leave_race_room", {
+        target_room_id: roomId
+      });
+
+      throw settingsError;
+    }
+
+    await mpEnter(roomId);
+
+    showToast(
+      "🏁 Room created: " + created.code,
+      "success"
+    );
+
+  } catch (error) {
+    console.error("Room creation:", error);
+
+    notify(error.message, "error");
+    showToast(error.message, "error");
+
+  } finally {
+    enteringRoom = false;
+    mpBusy = false;
+    button.disabled = false;
+  }
+}
+
+/* =====================================================
+   LOBBY RENDERING
+===================================================== */
 
 function renderLobby() {
-
   if (!mpRoom || !currentUser) return;
 
   showView("lobby");
@@ -136,8 +272,7 @@ function renderLobby() {
 
   container.replaceChildren();
 
-  for (const player of mpPlayers) {
-
+  mpPlayers.forEach(player => {
     const name = playerName(player);
 
     const card = makeElement(
@@ -145,9 +280,10 @@ function renderLobby() {
       "lobby-player"
     );
 
-    if (player.is_ready) {
-      card.classList.add("ready");
-    }
+    card.classList.toggle(
+      "ready",
+      Boolean(player.is_ready)
+    );
 
     const avatar = makeElement(
       "div",
@@ -165,31 +301,32 @@ function renderLobby() {
       "lobby-player-info"
     );
 
-    const username = makeElement(
-      "strong",
-      "",
-      name +
-      (player.user_id === currentUser.id
-        ? " (YOU)"
-        : "")
-    );
+    info.append(
+      makeElement(
+        "strong",
+        "",
+        name +
+        (player.user_id === currentUser.id
+          ? " (YOU)"
+          : "")
+      ),
 
-    const details = makeElement(
-      "small",
-      "",
-      (player.user_id === mpRoom.host_id
-        ? "👑 HOST · "
-        : "") +
-      `⚡ ${player.profile?.best_wpm || 0} WPM`
+      makeElement(
+        "small",
+        "",
+        (player.user_id === mpRoom.host_id
+          ? "👑 HOST · "
+          : "") +
+        `⚡ ${player.profile?.best_wpm || 0} WPM`
+      )
     );
-
-    info.append(username, details);
 
     const status = makeElement(
       "span",
       player.is_ready
         ? "lobby-ready-badge ready"
         : "lobby-ready-badge",
+
       player.is_ready
         ? "✓ READY"
         : "WAITING"
@@ -198,14 +335,13 @@ function renderLobby() {
     card.append(avatar, info, status);
 
     container.appendChild(card);
-  }
+  });
 
   for (
     let i = mpPlayers.length;
     i < mpRoom.max_players;
     i++
   ) {
-
     const empty = makeElement(
       "div",
       "lobby-player",
@@ -217,22 +353,25 @@ function renderLobby() {
     container.appendChild(empty);
   }
 
-  const me = mpPlayers.find(
-    p => p.user_id === currentUser.id
-  );
+  const me = getMyPlayer();
 
-  const ready =
+  const everyoneReady =
     mpPlayers.length >= 2 &&
     mpPlayers.length <= mpRoom.max_players &&
     mpPlayers.every(p => p.is_ready);
 
-  const startButton = el("startMultiplayerButton");
+  const start = el("startMultiplayerButton");
 
-  startButton.hidden = !isHost();
+  start.hidden = !isHost();
 
-  startButton.disabled = !ready || mpBusy;
+  start.disabled =
+    !everyoneReady ||
+    startingRace ||
+    mpBusy;
 
-  startButton.textContent = "🏁 START RACE →";
+  start.textContent = startingRace
+    ? "STARTING..."
+    : "🏁 START RACE →";
 
   el("toggleReadyButton").textContent =
     me?.is_ready
@@ -240,93 +379,102 @@ function renderLobby() {
       : "I'M READY";
 
   el("toggleReadyButton").disabled =
-    mpBusy || !me;
+    !me || mpBusy;
 
   if (mpPlayers.length < 2) {
-
     el("lobbyStatus").textContent =
       "Waiting for another player...";
-
-  } else if (!ready) {
-
+  } else if (!everyoneReady) {
     el("lobbyStatus").textContent =
       "Waiting for everyone to ready up...";
-
   } else {
-
     el("lobbyStatus").textContent =
-      "Everyone is ready! Host can start.";
-
+      "✅ Everyone ready! Host can start.";
   }
 
+  const existingSettings = el(
+    "ksLobbyModeInfo"
+  );
+
+  if (existingSettings) {
+    existingSettings.remove();
+  }
+
+  const settingsInfo = makeElement(
+    "div",
+    "ks-mp-settings-summary",
+    `🎮 ${(mpRoom.game_mode || "classic").toUpperCase()} · ` +
+    `⌨ ${(mpRoom.text_mode || "words").toUpperCase()} · ` +
+    `⏱ ${mpRoom.time_limit || 60}s`
+  );
+
+  settingsInfo.id = "ksLobbyModeInfo";
+
+  el("lobbyPlayers").before(settingsInfo);
 }
 
-/* ==================================================
+/* =====================================================
    START RACE
-================================================== */
+===================================================== */
 
 async function startMultiplayerRace() {
-
-  if (!mpRoom || !currentUser) return;
+  if (!mpRoom || !currentUser || startingRace) {
+    return;
+  }
 
   if (!isHost()) {
     notify("Only the host can start.", "error");
     return;
   }
 
-  const ready =
-    mpPlayers.length >= 2 &&
-    mpPlayers.every(p => p.is_ready);
+  if (
+    mpPlayers.length < 2 ||
+    !mpPlayers.every(p => p.is_ready)
+  ) {
+    notify(
+      "At least two players must be ready.",
+      "error"
+    );
 
-  if (!ready) {
-    notify("Everyone must be ready.", "error");
     return;
   }
+
+  startingRace = true;
 
   const button = el("startMultiplayerButton");
 
   button.disabled = true;
-
-  notify("Starting multiplayer race...");
+  button.textContent = "STARTING...";
 
   try {
-
-    const roomId = mpRoom.id;
-
-    const { data, error } = await client.rpc(
+    const { error } = await client.rpc(
       "start_multiplayer_race",
       {
-        target_room_id: roomId
+        target_room_id: mpRoom.id
       }
     );
 
     if (error) throw error;
 
-    notify("Race started!", "success");
+    notify("🏁 Race starting!", "success");
 
     await mpRefresh();
 
-    if (mpRoom?.id === roomId) {
-      await loadActiveRound();
-    }
-
   } catch (error) {
-
-    console.error(error);
+    console.error("Start race:", error);
 
     notify(error.message, "error");
 
-    button.disabled = false;
+  } finally {
+    startingRace = false;
   }
-
 }
 
-/* ==================================================
-   LOAD ROUND
-================================================== */
+/* =====================================================
+   LOAD ACTIVE ROUND
+===================================================== */
 
 async function loadActiveRound() {
-
   if (
     !mpRoom ||
     mpRoom.status !== "racing" ||
@@ -336,17 +484,18 @@ async function loadActiveRound() {
   const roundId = mpRoom.current_round_id;
 
   if (activeRound?.id === roundId) {
-    renderTracks();
+    updateTracks();
     return;
   }
 
-  const generation = raceGeneration;
+  const generation = engineGeneration;
+  const roomId = mpRoom.id;
 
   const { data, error } = await client
     .from("race_rounds")
     .select("*")
     .eq("id", roundId)
-    .eq("room_id", mpRoom.id)
+    .eq("room_id", roomId)
     .single();
 
   if (error) {
@@ -355,8 +504,9 @@ async function loadActiveRound() {
   }
 
   if (
-    generation !== raceGeneration ||
-    mpRoom?.current_round_id !== roundId
+    generation !== engineGeneration ||
+    mpRoom?.id !== roomId ||
+    mpRoom.current_round_id !== roundId
   ) return;
 
   resetRaceState();
@@ -364,65 +514,58 @@ async function loadActiveRound() {
   activeRound = data;
 
   prepareRace();
-
 }
 
-/* ==================================================
+/* =====================================================
    PREPARE RACE
-================================================== */
+===================================================== */
 
 function prepareRace() {
-
   if (!activeRound) return;
 
   showView("race");
 
-  raceComplete = false;
   raceRunning = false;
+  raceComplete = false;
 
-  raceInput.value = "";
-  raceInput.disabled = true;
+  input.value = "";
+  input.disabled = true;
 
   el("multiplayerWpm").textContent = "0";
   el("multiplayerProgress").textContent = "0%";
 
-  el("multiplayerRaceStatus").textContent =
-    "Preparing race...";
-
   el("multiplayerPassage").textContent =
     activeRound.passage;
 
-  renderTracks();
+  el("multiplayerRaceStatus").textContent =
+    "Preparing multiplayer race...";
 
-  stopClock();
+  updateTracks();
 
-  raceInterval = setInterval(
+  clearInterval(clockTimer);
+
+  clockTimer = setInterval(
     updateRaceClock,
     100
   );
 
   updateRaceClock();
-
 }
 
-/* ==================================================
-   SYNCHRONIZED COUNTDOWN
-================================================== */
+/* =====================================================
+   COUNTDOWN AND TIMER
+===================================================== */
 
 function updateRaceClock() {
-
   if (!activeRound || !mpRoom) return;
 
-  const start = raceStartMs();
+  const start = new Date(
+    activeRound.started_at
+  ).getTime();
 
-  const now = Date.now() + raceClockOffset;
-
-  const remaining = start - now;
+  const remaining = start - Date.now();
 
   if (remaining > 0) {
-
-    raceInput.disabled = true;
-
     el("multiplayerCountdown").hidden = false;
 
     el("multiplayerCountdown").textContent =
@@ -434,6 +577,8 @@ function updateRaceClock() {
     el("multiplayerRaceTimer").textContent =
       "0s";
 
+    input.disabled = true;
+
     return;
   }
 
@@ -441,59 +586,56 @@ function updateRaceClock() {
 
   const elapsed = Math.max(
     0,
-    Math.floor((now - start) / 1000)
+    Math.floor(
+      (Date.now() - start) / 1000
+    )
   );
 
   el("multiplayerRaceTimer").textContent =
     elapsed + "s";
 
+  const me = getMyPlayer();
+
+  if (me?.finished_at) {
+    raceComplete = true;
+    raceRunning = false;
+
+    input.disabled = true;
+
+    el("multiplayerRaceStatus").textContent =
+      "🏁 FINISHED! Waiting for other players...";
+
+    return;
+  }
+
   if (!raceRunning && !raceComplete) {
+    raceRunning = true;
 
-    const me = mpPlayers.find(
-      p => p.user_id === currentUserId()
-    );
+    input.disabled = false;
 
-    if (me?.finished_at) {
+    el("multiplayerRaceStatus").textContent =
+      "🏎 RACE IN PROGRESS";
 
-      raceComplete = true;
-
-      raceInput.disabled = true;
-
-    } else {
-
-      raceRunning = true;
-
-      raceInput.disabled = false;
-
-      raceInput.focus();
-
-      el("multiplayerRaceStatus").textContent =
-        "🏎 RACE IN PROGRESS";
-
-    }
-
+    input.focus();
   }
 
   if (elapsed >= RACE_TIMEOUT) {
-
-    stopClock();
-
-    raceInput.disabled = true;
-
     raceRunning = false;
+    raceComplete = true;
+
+    input.disabled = true;
+
+    clearInterval(clockTimer);
 
     checkRaceCompletion();
-
   }
-
 }
 
-/* ==================================================
-   TRACKS
-================================================== */
+/* =====================================================
+   RACE TRACKS
+===================================================== */
 
-function renderTracks() {
-
+function updateTracks() {
   if (!mpRoom || !currentUser) return;
 
   const container = el("multiplayerTracks");
@@ -501,32 +643,26 @@ function renderTracks() {
   const existing = new Map();
 
   container.querySelectorAll(
-    "[data-player-id]"
+    "[data-racer-id]"
   ).forEach(track => {
-
     existing.set(
-      track.dataset.playerId,
+      track.dataset.racerId,
       track
     );
-
   });
 
   const fragment = document.createDocumentFragment();
 
-  for (const player of mpPlayers) {
-
-    const name = playerName(player);
-
+  mpPlayers.forEach((player, index) => {
     let track = existing.get(player.user_id);
 
     if (!track) {
-
       track = makeElement(
         "div",
         "multiplayer-track"
       );
 
-      track.dataset.playerId = player.user_id;
+      track.dataset.racerId = player.user_id;
 
       const label = makeElement(
         "span",
@@ -546,24 +682,23 @@ function renderTracks() {
       const car = makeElement(
         "span",
         "multiplayer-car",
-        "🏎️"
+        index === 0 ? "🏎️" : "🚗"
       );
 
       line.append(fill, car);
 
-      const progress = makeElement(
+      const stats = makeElement(
         "span",
         "multiplayer-track-progress"
       );
 
-      track.append(label, line, progress);
-
+      track.append(label, line, stats);
     }
 
     track.querySelector(
       ".multiplayer-racer-name"
     ).textContent =
-      name +
+      playerName(player) +
       (player.user_id === currentUser.id
         ? " (YOU)"
         : "");
@@ -584,22 +719,19 @@ function renderTracks() {
       `${progress}% · ${player.current_wpm || 0} WPM`;
 
     fragment.appendChild(track);
-  }
+  });
 
   container.replaceChildren(fragment);
 
   requestAnimationFrame(updateCarPositions);
-
 }
 
 function updateCarPositions() {
-
   document.querySelectorAll(
     "#multiplayerTracks .multiplayer-track"
   ).forEach(track => {
-
     const player = mpPlayers.find(
-      p => p.user_id === track.dataset.playerId
+      p => p.user_id === track.dataset.racerId
     );
 
     if (!player) return;
@@ -612,7 +744,7 @@ function updateCarPositions() {
       ".multiplayer-car"
     );
 
-    const distance = Math.max(
+    const available = Math.max(
       0,
       line.clientWidth - car.offsetWidth - 8
     );
@@ -624,22 +756,18 @@ function updateCarPositions() {
     );
 
     car.style.transform =
-      `translateX(${distance * progress / 100}px)`;
-
+      `translateX(${available * progress / 100}px)`;
   });
-
 }
 
-/* ==================================================
-   PASSAGE HIGHLIGHTING
-================================================== */
+/* =====================================================
+   PASSAGE RENDERING
+===================================================== */
 
 function renderPassage() {
-
   if (!activeRound) return;
 
-  const typed = raceInput.value;
-
+  const typed = input.value;
   const passage = activeRound.passage;
 
   const container = el("multiplayerPassage");
@@ -647,37 +775,31 @@ function renderPassage() {
   const fragment = document.createDocumentFragment();
 
   for (let i = 0; i < passage.length; i++) {
+    const span = document.createElement("span");
 
-    const character = document.createElement("span");
-
-    character.textContent = passage[i];
+    span.textContent = passage[i];
 
     if (i < typed.length) {
-
-      character.className =
+      span.className =
         typed[i] === passage[i]
           ? "correct"
           : "incorrect";
-
     }
 
-    fragment.appendChild(character);
+    fragment.appendChild(span);
   }
 
   container.replaceChildren(fragment);
-
 }
 
-/* ==================================================
-   LIVE PROGRESS
-================================================== */
+/* =====================================================
+   CORRECT PROGRESS
+===================================================== */
 
-function getCorrectPrefix() {
+function correctPrefixLength() {
+  if (!activeRound) return 0;
 
-  if (!activeRound) return "";
-
-  const typed = raceInput.value;
-
+  const typed = input.value;
   const passage = activeRound.passage;
 
   let correct = 0;
@@ -687,39 +809,33 @@ function getCorrectPrefix() {
     correct < passage.length &&
     typed[correct] === passage[correct]
   ) {
-
     correct++;
-
   }
 
-  return passage.slice(0, correct);
-
+  return correct;
 }
 
 function updateLocalStats() {
-
   if (!activeRound) return;
 
-  const typed = raceInput.value;
+  const correct = correctPrefixLength();
 
-  const prefix = getCorrectPrefix();
+  const start = new Date(
+    activeRound.started_at
+  ).getTime();
 
   const elapsed = Math.max(
     0.1,
-    (
-      Date.now() +
-      raceClockOffset -
-      raceStartMs()
-    ) / 1000
+    (Date.now() - start) / 1000
   );
 
   const wpm = Math.round(
-    (prefix.length / 5) /
+    (correct / 5) /
     (elapsed / 60)
   );
 
   const progress = Math.floor(
-    prefix.length /
+    correct /
     activeRound.passage.length *
     100
   );
@@ -729,11 +845,13 @@ function updateLocalStats() {
 
   el("multiplayerProgress").textContent =
     clamp(progress, 0, 100) + "%";
-
 }
 
-async function submitProgress() {
+/* =====================================================
+   SUBMIT PROGRESS TO SUPABASE
+===================================================== */
 
+async function submitProgress() {
   if (
     !activeRound ||
     !mpRoom ||
@@ -742,22 +860,29 @@ async function submitProgress() {
   ) return;
 
   if (progressBusy) {
-
     progressPending = true;
     return;
+  }
 
+  const correct = correctPrefixLength();
+
+  if (
+    correct === lastSubmittedLength &&
+    correct !== activeRound.passage.length
+  ) {
+    return;
   }
 
   progressBusy = true;
 
   const roomId = mpRoom.id;
   const roundId = activeRound.id;
-  const userId = currentUserId();
+  const userId = currentUser?.id;
 
-  const content = getCorrectPrefix();
+  const content =
+    activeRound.passage.slice(0, correct);
 
   try {
-
     const { data, error } = await client.rpc(
       "submit_race_progress",
       {
@@ -772,8 +897,10 @@ async function submitProgress() {
     if (
       mpRoom?.id !== roomId ||
       activeRound?.id !== roundId ||
-      currentUserId() !== userId
+      currentUser?.id !== userId
     ) return;
+
+    lastSubmittedLength = correct;
 
     el("multiplayerWpm").textContent =
       data.wpm;
@@ -781,107 +908,86 @@ async function submitProgress() {
     el("multiplayerProgress").textContent =
       data.progress + "%";
 
-    const me = mpPlayers.find(
-      p => p.user_id === userId
-    );
+    const me = getMyPlayer();
 
     if (me) {
-
       me.progress = data.progress;
       me.current_wpm = data.wpm;
-
     }
 
-    renderTracks();
+    updateTracks();
 
     if (data.finished) {
-
       raceComplete = true;
       raceRunning = false;
 
-      raceInput.disabled = true;
+      input.disabled = true;
 
       el("multiplayerRaceStatus").textContent =
-        "🏁 FINISHED! WAITING FOR PLAYERS...";
+        "🏁 FINISHED! Waiting for results...";
 
       playSound("victory");
 
       await checkRaceCompletion();
-
     }
 
   } catch (error) {
+    console.error("Race progress:", error);
 
-    console.error(
-      "Multiplayer progress:",
-      error
-    );
-
-    if (
-      activeRound?.id === roundId &&
-      mpRoom?.id === roomId
-    ) {
-      notify(error.message, "error");
-    }
+    notify(error.message, "error");
 
   } finally {
-
     progressBusy = false;
 
     if (progressPending && !raceComplete) {
-
       progressPending = false;
 
-      setTimeout(submitProgress, 100);
+      clearTimeout(progressTimer);
 
+      progressTimer = setTimeout(
+        submitProgress,
+        100
+      );
     }
-
   }
-
 }
 
-/* ==================================================
-   CHECK COMPLETION
-================================================== */
+/* =====================================================
+   COMPLETION CHECK
+===================================================== */
 
 async function checkRaceCompletion() {
-
-  if (!mpRoom || !currentUser) return;
-
-  const roomId = mpRoom.id;
+  if (
+    !mpRoom ||
+    !currentUser ||
+    mpRoom.status !== "racing"
+  ) return;
 
   try {
-
     const { error } = await client.rpc(
       "finish_multiplayer_race",
       {
-        target_room_id: roomId
+        target_room_id: mpRoom.id
       }
     );
 
     if (error) throw error;
 
-    if (mpRoom?.id === roomId) {
-      await mpRefresh();
-    }
+    await mpRefresh();
 
   } catch (error) {
-
     console.warn(
       "Race completion:",
       error.message
     );
-
   }
-
 }
 
-/* ==================================================
-   RESULTS
-================================================== */
+/* =====================================================
+   LEADERBOARD
+===================================================== */
 
 async function renderResults() {
-
   if (!mpRoom?.current_round_id) return;
 
   const roundId = mpRoom.current_round_id;
@@ -891,11 +997,11 @@ async function renderResults() {
   raceRunning = false;
   raceComplete = true;
 
-  raceInput.disabled = true;
+  input.disabled = true;
 
-  stopClock();
+  clearRaceTimers();
 
-  if (resultsRoundId === roundId) return;
+  if (resultsLoadedFor === roundId) return;
 
   const { data, error } = await client.rpc(
     "get_multiplayer_leaderboard",
@@ -905,32 +1011,46 @@ async function renderResults() {
   );
 
   if (error) {
+    console.error("Leaderboard:", error);
 
     notify(error.message, "error");
     return;
-
   }
 
-  resultsRoundId = roundId;
+  resultsLoadedFor = roundId;
 
   const container = el("multiplayerLeaderboard");
 
   container.replaceChildren();
 
-  for (const result of data || []) {
+  const results = data || [];
 
+  const finishedIds = new Set(
+    results.map(result => result.user_id)
+  );
+
+  results.forEach(result => {
     const item = makeElement(
       "div",
       "multiplayer-leaderboard-item"
     );
 
+    const medal =
+      result.race_position === 1
+        ? "🥇"
+        : result.race_position === 2
+          ? "🥈"
+          : result.race_position === 3
+            ? "🥉"
+            : "🏁";
+
     const position = makeElement(
       "span",
       "multiplayer-position",
-      "#" + result.race_position
+      medal
     );
 
-    const username = makeElement(
+    const name = makeElement(
       "span",
       "multiplayer-leaderboard-name",
       result.username || "Player"
@@ -942,54 +1062,88 @@ async function renderResults() {
       result.wpm + " WPM"
     );
 
-    item.append(
-      position,
-      username,
-      speed
-    );
+    item.append(position, name, speed);
 
     container.appendChild(item);
-  }
+  });
 
-  const winner = data?.[0];
+  // Show participants who did not finish.
+
+  mpPlayers
+    .filter(player => !finishedIds.has(player.user_id))
+    .forEach(player => {
+      const item = makeElement(
+        "div",
+        "multiplayer-leaderboard-item"
+      );
+
+      item.append(
+        makeElement(
+          "span",
+          "multiplayer-position",
+          "—"
+        ),
+
+        makeElement(
+          "span",
+          "multiplayer-leaderboard-name",
+          playerName(player)
+        ),
+
+        makeElement(
+          "span",
+          "multiplayer-leaderboard-wpm",
+          "DNF"
+        )
+      );
+
+      container.appendChild(item);
+    });
+
+  const winner = results[0];
 
   if (winner) {
-
     notify(
-      "🏆 WINNER: " + winner.username,
+      "🏆 WINNER: " +
+      (winner.username || "Player") +
+      " — " +
+      winner.wpm +
+      " WPM!",
       "success"
     );
 
+    if (winner.user_id === currentUser?.id) {
+      playSound("victory");
+    }
+
   } else {
-
-    notify(
-      "Race finished. No completed results."
-    );
-
+    notify("Race ended without a finisher.");
   }
 
-  const again = el("raceAgainButton");
+  const button = el("raceAgainButton");
 
-  again.hidden = !isHost();
-
-  again.disabled = false;
-
+  button.hidden = !isHost();
+  button.disabled = false;
 }
 
-/* ==================================================
+/* =====================================================
    RACE AGAIN
-================================================== */
+===================================================== */
 
 async function raceAgain() {
+  if (
+    !mpRoom ||
+    !isHost() ||
+    resettingRoom
+  ) return;
 
-  if (!mpRoom || !isHost()) return;
+  resettingRoom = true;
 
   const button = el("raceAgainButton");
 
   button.disabled = true;
 
   try {
-
     const { error } = await client.rpc(
       "reset_multiplayer_room",
       {
@@ -1009,116 +1163,75 @@ async function raceAgain() {
     await mpRefresh();
 
   } catch (error) {
-
     notify(error.message, "error");
 
   } finally {
-
+    resettingRoom = false;
     button.disabled = false;
-
   }
-
 }
 
-/* ==================================================
-   INTEGRATE EXISTING LOBBY RENDERER
-================================================== */
+/* =====================================================
+   RENDER INTEGRATION
+===================================================== */
 
 mpRender = function () {
-
   if (!mpRoom || !currentUser) return;
 
   if (mpRoom.status === "waiting") {
-
     if (activeRound) {
       resetRaceState();
     }
 
     renderLobby();
-
     return;
   }
 
   if (mpRoom.status === "racing") {
-
     showView("race");
 
     if (
       !activeRound ||
       activeRound.id !== mpRoom.current_round_id
     ) {
-
       loadActiveRound();
-
     } else {
-
-      renderTracks();
-
+      updateTracks();
     }
 
     return;
   }
 
   if (mpRoom.status === "finished") {
-
     renderResults();
-
   }
-
 };
 
-/* ==================================================
-   EXISTING CLEANUP INTEGRATION
-================================================== */
-
-const originalCleanup = mpCleanup;
-
-mpCleanup = async function () {
-
-  raceGeneration++;
-
-  resetRaceState();
-
-  resultsRoundId = null;
-
-  if (raceChannel) {
-
-    const oldChannel = raceChannel;
-    raceChannel = null;
-
-    await client.removeChannel(oldChannel);
-
-  }
-
-  await originalCleanup();
-
-};
-
-/* ==================================================
-   EXISTING ROOM ENTRY INTEGRATION
-================================================== */
+/* =====================================================
+   ROOM ENTRY INTEGRATION
+===================================================== */
 
 const originalEnter = mpEnter;
 
 mpEnter = async function (roomId) {
-
-  raceGeneration++;
+  engineGeneration++;
 
   resetRaceState();
 
   await originalEnter(roomId);
 
-  if (!mpRoom || mpRoom.id !== roomId) return;
+  if (!mpRoom || mpRoom.id !== roomId) {
+    return;
+  }
 
   if (raceChannel) {
-
     await client.removeChannel(raceChannel);
-
+    raceChannel = null;
   }
 
   raceChannel = client
     .channel(
-      "ks-phase4-" +
+      "ks-v5-racing-" +
       roomId +
       "-" +
       Date.now()
@@ -1135,23 +1248,52 @@ mpEnter = async function (roomId) {
     )
     .subscribe();
 
-  await mpRefresh();
+  clearInterval(syncTimer);
 
+  syncTimer = setInterval(() => {
+    if (mpRoom) {
+      mpRefresh();
+    }
+  }, REFRESH_INTERVAL);
+
+  await mpRefresh();
 };
 
-/* ==================================================
-   OVERRIDE PLACEHOLDER BUTTON LISTENERS
-================================================== */
+/* =====================================================
+   ROOM CLEANUP INTEGRATION
+===================================================== */
+
+const originalCleanup = mpCleanup;
+
+mpCleanup = async function () {
+  engineGeneration++;
+
+  resetRaceState();
+
+  if (raceChannel) {
+    const channel = raceChannel;
+    raceChannel = null;
+
+    await client.removeChannel(channel);
+  }
+
+  await originalCleanup();
+};
+
+/* =====================================================
+   BUTTON EVENTS
+===================================================== */
+
+// Capture-phase listeners prevent the old placeholder
+// handlers from displaying their error messages.
 
 el("startMultiplayerButton").addEventListener(
   "click",
   event => {
-
     event.preventDefault();
     event.stopImmediatePropagation();
 
     startMultiplayerRace();
-
   },
   true
 );
@@ -1159,22 +1301,30 @@ el("startMultiplayerButton").addEventListener(
 el("raceAgainButton").addEventListener(
   "click",
   event => {
-
     event.preventDefault();
     event.stopImmediatePropagation();
 
     raceAgain();
-
   },
   true
 );
 
-/* ==================================================
+el("createRoomButton").addEventListener(
+  "click",
+  event => {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+
+    createConfiguredRoom();
+  },
+  true
+);
+
+/* =====================================================
    TYPING INPUT
-================================================== */
+===================================================== */
 
-raceInput.addEventListener("input", () => {
-
+input.addEventListener("input", () => {
   if (
     !raceRunning ||
     raceComplete ||
@@ -1183,73 +1333,45 @@ raceInput.addEventListener("input", () => {
 
   const passage = activeRound.passage;
 
-  if (raceInput.value.length > passage.length) {
-
-    raceInput.value = raceInput.value.slice(
+  if (input.value.length > passage.length) {
+    input.value = input.value.slice(
       0,
       passage.length
     );
-
   }
 
   renderPassage();
-
   updateLocalStats();
 
   const now = Date.now();
 
-  const fullPassage =
-    raceInput.value === passage;
-
   if (
-    fullPassage ||
+    input.value === passage ||
     now - lastProgressSent >= PROGRESS_INTERVAL
   ) {
-
     lastProgressSent = now;
 
     submitProgress();
 
   } else {
-
     progressPending = true;
 
-  }
+    clearTimeout(progressTimer);
 
+    progressTimer = setTimeout(() => {
+      progressPending = false;
+      lastProgressSent = Date.now();
+
+      submitProgress();
+    }, PROGRESS_INTERVAL);
+  }
 });
 
-/* ==================================================
-   PERIODIC RACE SYNCHRONIZATION
-================================================== */
+/* =====================================================
+   PERIODIC COMPLETION CHECK
+===================================================== */
 
 setInterval(() => {
-
-  if (
-    !mpRoom ||
-    !currentUser ||
-    mpRoom.status !== "racing"
-  ) return;
-
-  if (raceRunning && progressPending) {
-
-    progressPending = false;
-
-    submitProgress();
-
-  }
-
-}, 500);
-
-
-/*
-  Periodic completion checks:
-  - Handle finished players.
-  - Handle timeout.
-  - Handle players leaving.
-*/
-
-setInterval(() => {
-
   if (
     !mpRoom ||
     !currentUser ||
@@ -1257,47 +1379,23 @@ setInterval(() => {
   ) return;
 
   checkRaceCompletion();
-
 }, 5000);
 
-
-/* ==================================================
+/* =====================================================
    RESIZE
-================================================== */
+===================================================== */
 
 window.addEventListener(
   "resize",
   updateCarPositions
 );
 
-
-/* ==================================================
-   VISIBILITY
-================================================== */
-
-document.addEventListener(
-  "visibilitychange",
-  () => {
-
-    if (
-      document.visibilityState === "visible" &&
-      mpRoom
-    ) {
-
-      mpRefresh();
-
-    }
-
-  }
-);
-
-
-/* ==================================================
-   INITIALIZE
-================================================== */
+/* =====================================================
+   INITIALIZATION
+===================================================== */
 
 console.log(
-  "%c🏎 KEYSTRIKE V5 PHASE 4 LOADED",
+  "%c🏎 KEYSTRIKE V5 MULTIPLAYER ENGINE READY",
   "color:#73e0a3;font-size:18px;font-weight:bold"
 );
 
