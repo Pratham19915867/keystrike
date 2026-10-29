@@ -1,8 +1,19 @@
 "use strict";
 
-/* ========================================
-   KEYSTRIKE V4
-   ======================================== */
+/* ==========================================
+   KEYSTRIKE V5
+   SOCIAL & MULTIPLAYER UPDATE
+
+   PHASE 1: FRIEND SYSTEM
+   PHASE 2: PRIVATE CHAT
+
+   Multiplayer rooms and live racing:
+   NOT YET IMPLEMENTED
+========================================== */
+
+/* ==========================================
+   UTILITIES
+========================================== */
 
 const $ = id => document.getElementById(id);
 
@@ -19,10 +30,6 @@ const db = window.supabase
     )
   : null;
 
-/* ========================================
-   STORAGE
-   ======================================== */
-
 function storageGet(key, fallback) {
   try {
     const value = localStorage.getItem(key);
@@ -30,7 +37,6 @@ function storageGet(key, fallback) {
     return value === null
       ? fallback
       : JSON.parse(value);
-
   } catch {
     return fallback;
   }
@@ -44,9 +50,92 @@ function storageSet(key, value) {
   }
 }
 
-/* ========================================
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function showToast(message, type = "") {
+  const toast = $("ksToast");
+
+  if (!toast) return;
+
+  toast.textContent = message;
+  toast.className = "ks-toast " + type;
+  toast.hidden = false;
+
+  clearTimeout(showToast.timer);
+
+  showToast.timer = setTimeout(() => {
+    toast.hidden = true;
+  }, 3500);
+}
+
+function formatTime(date) {
+  if (!date) return "";
+
+  return new Date(date).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+}
+
+function formatLastSeen(date) {
+  if (!date) return "Offline";
+
+  const seconds = Math.max(
+    0,
+    Math.floor(
+      (Date.now() - new Date(date).getTime()) / 1000
+    )
+  );
+
+  if (seconds < 60) return "Active recently";
+
+  if (seconds < 3600) {
+    return `Last active ${Math.floor(seconds / 60)}m ago`;
+  }
+
+  if (seconds < 86400) {
+    return `Last active ${Math.floor(seconds / 3600)}h ago`;
+  }
+
+  return `Last active ${Math.floor(seconds / 86400)}d ago`;
+}
+
+function safeAvatar(container, url, fallback = "K") {
+  if (!container) return;
+
+  container.replaceChildren();
+
+  if (url && /^https:\/\//i.test(url)) {
+    const image = document.createElement("img");
+
+    image.alt = "Profile photo";
+    image.referrerPolicy = "no-referrer";
+
+    image.onerror = () => {
+      container.textContent = fallback;
+    };
+
+    image.src = url;
+    container.appendChild(image);
+  } else {
+    container.textContent = fallback;
+  }
+}
+
+function makeElement(tag, className = "", text = "") {
+  const element = document.createElement(tag);
+
+  element.className = className;
+  element.textContent = text;
+
+  return element;
+}
+
+/* ==========================================
    WORD DATA
-   ======================================== */
+========================================== */
 
 const commonWords = `
 the be to of and a in that have i it for not on with
@@ -173,9 +262,9 @@ function randomWord() {
   return randomItem(commonWords);
 }
 
-/* ========================================
+/* ==========================================
    SETTINGS
-   ======================================== */
+========================================== */
 
 const defaults = {
   theme: "cyber",
@@ -241,9 +330,7 @@ function applySettings() {
   );
 
   toggleSettings.forEach(key => {
-    if ($(key)) {
-      $(key).checked = settings[key];
-    }
+    if ($(key)) $(key).checked = settings[key];
   });
 
   $("fontSizeSetting").value = settings.fontSize;
@@ -326,9 +413,9 @@ $("quickSound").addEventListener("click", () => {
   applySettings();
 });
 
-/* ========================================
+/* ==========================================
    SOUND ENGINE
-   ======================================== */
+========================================== */
 
 let audioContext = null;
 
@@ -351,7 +438,6 @@ function playSound(type = "correct") {
 
     const oscillator = audioContext.createOscillator();
     const gain = audioContext.createGain();
-
     const now = audioContext.currentTime;
 
     let frequency = 550;
@@ -397,7 +483,6 @@ function playSound(type = "correct") {
 
     oscillator.start(now);
     oscillator.stop(now + length + .01);
-
   } catch (error) {
     console.warn("Audio unavailable:", error);
   }
@@ -475,13 +560,14 @@ function createParticles(element) {
   }
 }
 
-/* ========================================
-   ACCOUNT / SUPABASE
-   ======================================== */
+/* ==========================================
+   AUTHENTICATION
+========================================== */
 
 let currentUser = null;
 let currentProfile = null;
 let cloudResults = [];
+
 let authMode = "login";
 let authGeneration = 0;
 
@@ -504,31 +590,8 @@ $("profileButton").addEventListener("click", openAccount);
 $("closeAccount").addEventListener("click", closeAccount);
 
 $("accountModal").addEventListener("click", event => {
-  if (event.target === $("accountModal")) {
-    closeAccount();
-  }
+  if (event.target === $("accountModal")) closeAccount();
 });
-
-function safeAvatar(container, url, fallback) {
-  container.replaceChildren();
-
-  if (url && /^https:\/\//i.test(url)) {
-    const image = document.createElement("img");
-
-    image.alt = "Profile photo";
-    image.referrerPolicy = "no-referrer";
-
-    image.onerror = () => {
-      container.textContent = fallback;
-    };
-
-    image.src = url;
-
-    container.appendChild(image);
-  } else {
-    container.textContent = fallback;
-  }
-}
 
 function renderAccount() {
   const signedIn = Boolean(currentUser);
@@ -558,15 +621,23 @@ function renderAccount() {
 
   $("profileName").textContent = name;
   $("accountDisplayName").textContent = name;
-
   $("accountEmail").textContent =
     currentUser.email || "Signed in";
 
   $("usernameInput").value =
     currentProfile?.username || "";
 
-  safeAvatar($("navAvatar"), avatar, name[0].toUpperCase());
-  safeAvatar($("accountAvatar"), avatar, name[0].toUpperCase());
+  safeAvatar(
+    $("navAvatar"),
+    avatar,
+    name[0].toUpperCase()
+  );
+
+  safeAvatar(
+    $("accountAvatar"),
+    avatar,
+    name[0].toUpperCase()
+  );
 
   const summary = calculateSummary(cloudResults);
 
@@ -584,16 +655,13 @@ $("googleLoginButton").addEventListener("click", async () => {
 
   const { error } = await db.auth.signInWithOAuth({
     provider: "google",
-
     options: {
       redirectTo:
         window.location.origin + window.location.pathname
     }
   });
 
-  if (error) {
-    accountMessage(error.message, "error");
-  }
+  if (error) accountMessage(error.message, "error");
 });
 
 $("switchAuthMode").addEventListener("click", () => {
@@ -625,23 +693,19 @@ $("emailAuthForm").addEventListener("submit", async event => {
   button.disabled = true;
 
   try {
-    let result;
-
-    if (authMode === "signup") {
-      result = await db.auth.signUp({
-        email,
-        password,
-        options: {
-          emailRedirectTo:
-            window.location.origin + window.location.pathname
-        }
-      });
-    } else {
-      result = await db.auth.signInWithPassword({
-        email,
-        password
-      });
-    }
+    const result = authMode === "signup"
+      ? await db.auth.signUp({
+          email,
+          password,
+          options: {
+            emailRedirectTo:
+              window.location.origin + window.location.pathname
+          }
+        })
+      : await db.auth.signInWithPassword({
+          email,
+          password
+        });
 
     if (result.error) throw result.error;
 
@@ -653,10 +717,8 @@ $("emailAuthForm").addEventListener("submit", async event => {
     } else {
       accountMessage("Successfully signed in!", "success");
     }
-
   } catch (error) {
     accountMessage(error.message, "error");
-
   } finally {
     button.disabled = false;
   }
@@ -678,14 +740,12 @@ async function sendPasswordReset() {
       window.location.origin + window.location.pathname
   });
 
-  if (error) {
-    accountMessage(error.message, "error");
-  } else {
-    accountMessage(
-      "If this email has an account, a password reset link will be sent.",
-      "success"
-    );
-  }
+  accountMessage(
+    error
+      ? error.message
+      : "If this email has an account, a password reset link will be sent.",
+    error ? "error" : "success"
+  );
 }
 
 $("forgotPasswordButton").addEventListener(
@@ -725,7 +785,6 @@ $("saveUsernameButton").addEventListener("click", async () => {
         : error.message,
       "error"
     );
-
     return;
   }
 
@@ -733,6 +792,8 @@ $("saveUsernameButton").addEventListener("click", async () => {
 
   renderAccount();
   accountMessage("Username updated!", "success");
+
+  refreshSocial();
 });
 
 $("logoutButton").addEventListener("click", async () => {
@@ -774,14 +835,21 @@ async function loadCloudResults(userId) {
 
 async function refreshAccount(user) {
   const generation = ++authGeneration;
+  const previousId = currentUser?.id || null;
+  const nextId = user?.id || null;
 
   currentUser = user;
   currentProfile = null;
   cloudResults = [];
 
+  if (previousId !== nextId) {
+    await cleanupSocial();
+  }
+
   renderAccount();
   updateStatsPage();
   updatePersonalBest();
+  renderSocialAuth();
 
   if (!user || !db) return;
 
@@ -800,22 +868,29 @@ async function refreshAccount(user) {
     updateStatsPage();
     updatePersonalBest();
 
+    if (previousId !== nextId) {
+      await initializeSocial();
+    }
   } catch (error) {
     if (generation !== authGeneration) return;
 
     console.error("Cloud data error:", error);
 
     $("statsSource").textContent =
-      "Could not load cloud stats. Check Supabase SQL setup.";
+      "Could not load cloud stats. Check Supabase setup.";
 
     accountMessage(
       "Cloud account data unavailable: " + error.message,
       "error"
     );
+
+    if (previousId !== nextId) {
+      await initializeSocial();
+    }
   }
 }
 
-async function initializeAuth() {
+function initializeAuth() {
   if (!db) {
     console.warn("Supabase SDK unavailable.");
     return;
@@ -899,17 +974,1347 @@ async function saveCloudResult(result) {
     updatePersonalBest();
 
     $("sessionStatus").textContent = "CLOUD SAVED";
-
   } catch (error) {
     console.error("Result save failed:", error);
 
-    $("sessionStatus").textContent = "CLOUD SAVE FAILED";
+    $("sessionStatus").textContent =
+      "CLOUD SAVE FAILED";
   }
 }
 
-/* ========================================
+/* ==========================================
+   SOCIAL SYSTEM STATE
+========================================== */
+
+let friendships = [];
+let friendProfiles = new Map();
+
+let selectedFriend = null;
+let chatMessages = [];
+
+let socialRefreshTimer = null;
+let activityTimer = null;
+
+let friendshipChannel = null;
+let messageChannel = null;
+let presenceChannel = null;
+
+let onlineUsers = new Set();
+
+let socialGeneration = 0;
+let chatGeneration = 0;
+let socialRefreshing = false;
+
+let socialInitializedFor = null;
+
+function socialMessage(message, type = "") {
+  $("socialStatusMessage").textContent = message;
+  $("socialStatusMessage").className =
+    "social-status-message " + type;
+}
+
+function renderSocialAuth() {
+  const signedIn = Boolean(currentUser);
+
+  $("socialLoginRequired").hidden = signedIn;
+  $("socialDashboard").hidden = !signedIn;
+
+  if (!signedIn) {
+    $("socialOnlineCount").textContent = "OFFLINE";
+    $("socialNotification").hidden = true;
+  }
+}
+
+$("socialLoginButton").addEventListener(
+  "click",
+  openAccount
+);
+
+/* ==========================================
+   SOCIAL DATA
+========================================== */
+
+async function getProfilesByIds(ids) {
+  if (!ids.length) return [];
+
+  const { data, error } = await db
+    .from("profiles")
+    .select(
+      "id,username,avatar_url,best_wpm,average_wpm,tests_completed,last_seen"
+    )
+    .in("id", ids);
+
+  if (error) throw error;
+
+  return data || [];
+}
+
+async function refreshSocial() {
+  if (!currentUser || !db || socialRefreshing) return;
+
+  const userId = currentUser.id;
+  const generation = socialGeneration;
+
+  socialRefreshing = true;
+
+  try {
+    const { data, error } = await db
+      .from("friendships")
+      .select("*")
+      .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`)
+      .order("created_at", { ascending: false });
+
+    if (error) throw error;
+
+    if (
+      generation !== socialGeneration ||
+      currentUser?.id !== userId
+    ) return;
+
+    friendships = data || [];
+
+    const ids = [
+      ...new Set(
+        friendships.map(item =>
+          item.sender_id === userId
+            ? item.receiver_id
+            : item.sender_id
+        )
+      )
+    ];
+
+    const profiles = await getProfilesByIds(ids);
+
+    if (
+      generation !== socialGeneration ||
+      currentUser?.id !== userId
+    ) return;
+
+    friendProfiles = new Map(
+      profiles.map(profile => [profile.id, profile])
+    );
+
+    renderFriendRequests();
+    renderFriendsList();
+    updateSocialNotification();
+
+    if (selectedFriend) {
+      const stillFriends = getAcceptedFriends()
+        .some(item => item.id === selectedFriend.id);
+
+      if (!stillFriends) {
+        closeChat();
+      } else {
+        selectedFriend =
+          friendProfiles.get(selectedFriend.id) ||
+          selectedFriend;
+
+        renderChatHeader();
+      }
+    }
+
+    socialMessage("");
+  } catch (error) {
+    console.error("Social refresh failed:", error);
+    socialMessage(error.message, "error");
+  } finally {
+    socialRefreshing = false;
+  }
+}
+
+function getAcceptedFriends() {
+  if (!currentUser) return [];
+
+  return friendships
+    .filter(item => item.status === "accepted")
+    .map(item => {
+      const id =
+        item.sender_id === currentUser.id
+          ? item.receiver_id
+          : item.sender_id;
+
+      return friendProfiles.get(id);
+    })
+    .filter(Boolean);
+}
+
+function getIncomingRequests() {
+  return friendships.filter(item =>
+    item.receiver_id === currentUser?.id &&
+    item.status === "pending"
+  );
+}
+
+function getOutgoingRequests() {
+  return friendships.filter(item =>
+    item.sender_id === currentUser?.id &&
+    item.status === "pending"
+  );
+}
+
+function updateSocialNotification() {
+  const count = getIncomingRequests().length;
+
+  $("friendRequestCount").textContent = count;
+  $("socialNotification").hidden = count === 0;
+}
+
+/* ==========================================
+   PLAYER SEARCH
+========================================== */
+
+$("playerSearchForm").addEventListener(
+  "submit",
+  async event => {
+    event.preventDefault();
+
+    if (!currentUser || !db) {
+      openAccount();
+      return;
+    }
+
+    const username =
+      $("playerSearchInput").value.trim();
+
+    if (!username) {
+      showToast("Enter a username.", "error");
+      return;
+    }
+
+    const container = $("playerSearchResults");
+
+    $("searchResults").hidden = false;
+
+    container.replaceChildren(
+      makeElement(
+        "div",
+        "social-empty-state",
+        "Searching players..."
+      )
+    );
+
+    try {
+      const { data, error } = await db
+        .from("profiles")
+        .select(
+          "id,username,avatar_url,best_wpm,average_wpm,tests_completed,last_seen"
+        )
+        .ilike("username", `%${username}%`)
+        .neq("id", currentUser.id)
+        .limit(20);
+
+      if (error) throw error;
+
+      container.replaceChildren();
+
+      if (!data?.length) {
+        container.appendChild(
+          makeElement(
+            "div",
+            "social-empty-state",
+            "No players found."
+          )
+        );
+        return;
+      }
+
+      data.forEach(profile => {
+        container.appendChild(
+          createSearchPlayerCard(profile)
+        );
+      });
+    } catch (error) {
+      container.replaceChildren(
+        makeElement(
+          "div",
+          "social-empty-state",
+          error.message
+        )
+      );
+    }
+  }
+);
+
+function createSearchPlayerCard(profile) {
+  const card = makeElement("div", "player-card");
+
+  const avatar = makeElement(
+    "div",
+    "player-avatar",
+    profile.username?.[0]?.toUpperCase() || "K"
+  );
+
+  safeAvatar(
+    avatar,
+    profile.avatar_url,
+    profile.username?.[0]?.toUpperCase() || "K"
+  );
+
+  const info = makeElement("div", "player-info");
+
+  const name = makeElement(
+    "strong",
+    "",
+    profile.username
+  );
+
+  const stats = makeElement(
+    "small",
+    "",
+    `⚡ ${profile.best_wpm || 0} WPM · ${profile.tests_completed || 0} tests`
+  );
+
+  info.append(name, stats);
+
+  const actions = makeElement("div", "player-actions");
+
+  const relationship = friendships.find(item =>
+    (
+      item.sender_id === currentUser.id &&
+      item.receiver_id === profile.id
+    ) ||
+    (
+      item.receiver_id === currentUser.id &&
+      item.sender_id === profile.id
+    )
+  );
+
+  const button = makeElement(
+    "button",
+    "social-small-btn",
+    relationship
+      ? relationship.status === "accepted"
+        ? "FRIENDS"
+        : "PENDING"
+      : "+ ADD"
+  );
+
+  button.disabled = Boolean(relationship);
+
+  button.addEventListener("click", async () => {
+    await sendFriendRequest(profile.id);
+    button.disabled = true;
+    button.textContent = "PENDING";
+  });
+
+  actions.appendChild(button);
+
+  card.append(avatar, info, actions);
+
+  return card;
+}
+
+async function sendFriendRequest(receiverId) {
+  if (!currentUser || !db) return;
+
+  if (receiverId === currentUser.id) {
+    showToast("You cannot add yourself.", "error");
+    return;
+  }
+
+  try {
+    const { error } = await db
+      .from("friendships")
+      .insert({
+        sender_id: currentUser.id,
+        receiver_id: receiverId,
+        status: "pending"
+      });
+
+    if (error) throw error;
+
+    showToast("Friend request sent!", "success");
+
+    await refreshSocial();
+  } catch (error) {
+    showToast(error.message, "error");
+
+    throw error;
+  }
+}
+
+/* ==========================================
+   FRIEND REQUESTS
+========================================== */
+
+function renderFriendRequests() {
+  const incoming = getIncomingRequests();
+  const outgoing = getOutgoingRequests();
+
+  const incomingContainer =
+    $("incomingFriendRequests");
+
+  const outgoingContainer =
+    $("outgoingFriendRequests");
+
+  incomingContainer.replaceChildren();
+  outgoingContainer.replaceChildren();
+
+  $("friendRequestCount").textContent =
+    incoming.length;
+
+  $("outgoingRequestsSection").hidden =
+    outgoing.length === 0;
+
+  if (!incoming.length) {
+    incomingContainer.appendChild(
+      makeElement(
+        "div",
+        "social-empty-state",
+        "No pending friend requests."
+      )
+    );
+  }
+
+  incoming.forEach(request => {
+    const profile =
+      friendProfiles.get(request.sender_id);
+
+    if (!profile) return;
+
+    const card = createFriendRequestCard(
+      profile,
+      request,
+      true
+    );
+
+    incomingContainer.appendChild(card);
+  });
+
+  outgoing.forEach(request => {
+    const profile =
+      friendProfiles.get(request.receiver_id);
+
+    if (!profile) return;
+
+    const card = createFriendRequestCard(
+      profile,
+      request,
+      false
+    );
+
+    outgoingContainer.appendChild(card);
+  });
+}
+
+function createFriendRequestCard(
+  profile,
+  request,
+  incoming
+) {
+  const card = makeElement(
+    "div",
+    "friend-request-card"
+  );
+
+  const avatar = makeElement(
+    "div",
+    "friend-avatar"
+  );
+
+  safeAvatar(
+    avatar,
+    profile.avatar_url,
+    profile.username?.[0]?.toUpperCase() || "K"
+  );
+
+  const info = makeElement("div", "friend-info");
+
+  info.append(
+    makeElement("strong", "", profile.username),
+    makeElement(
+      "small",
+      "",
+      incoming
+        ? "Wants to be friends"
+        : "Request pending"
+    )
+  );
+
+  const actions = makeElement(
+    "div",
+    "request-actions"
+  );
+
+  if (incoming) {
+    const accept = makeElement(
+      "button",
+      "social-small-btn accept",
+      "✓"
+    );
+
+    accept.title = "Accept request";
+
+    accept.addEventListener("click", async () => {
+      accept.disabled = true;
+
+      try {
+        const { error } = await db.rpc(
+          "accept_friend_request",
+          { request_id: request.id }
+        );
+
+        if (error) throw error;
+
+        showToast(
+          `You are now friends with ${profile.username}!`,
+          "success"
+        );
+
+        await refreshSocial();
+      } catch (error) {
+        showToast(error.message, "error");
+        accept.disabled = false;
+      }
+    });
+
+    const reject = makeElement(
+      "button",
+      "social-small-btn reject",
+      "✕"
+    );
+
+    reject.title = "Reject request";
+
+    reject.addEventListener("click", async () => {
+      reject.disabled = true;
+
+      try {
+        const { error } = await db.rpc(
+          "reject_friend_request",
+          { request_id: request.id }
+        );
+
+        if (error) throw error;
+
+        showToast("Request rejected.");
+
+        await refreshSocial();
+      } catch (error) {
+        showToast(error.message, "error");
+        reject.disabled = false;
+      }
+    });
+
+    actions.append(accept, reject);
+  } else {
+    const cancel = makeElement(
+      "button",
+      "social-small-btn remove",
+      "CANCEL"
+    );
+
+    cancel.addEventListener("click", async () => {
+      await deleteFriendship(request.id);
+    });
+
+    actions.appendChild(cancel);
+  }
+
+  card.append(avatar, info, actions);
+
+  return card;
+}
+
+async function deleteFriendship(requestId) {
+  if (!currentUser || !db) return;
+
+  try {
+    const { error } = await db
+      .from("friendships")
+      .delete()
+      .eq("id", requestId);
+
+    if (error) throw error;
+
+    showToast("Friendship updated.", "success");
+
+    await refreshSocial();
+  } catch (error) {
+    showToast(error.message, "error");
+  }
+}
+
+/* ==========================================
+   FRIENDS LIST
+========================================== */
+
+function renderFriendsList() {
+  const container = $("friendsList");
+
+  container.replaceChildren();
+
+  const friends = getAcceptedFriends();
+
+  $("friendsCount").textContent = friends.length;
+
+  const onlineCount = friends.filter(friend =>
+    onlineUsers.has(friend.id)
+  ).length;
+
+  $("friendsOnlineCount").textContent =
+    `${onlineCount} ONLINE`;
+
+  if (!friends.length) {
+    container.appendChild(
+      makeElement(
+        "div",
+        "social-empty-state",
+        "No friends yet. Search for players to connect!"
+      )
+    );
+    return;
+  }
+
+  friends.sort((a, b) => {
+    const aOnline = onlineUsers.has(a.id) ? 1 : 0;
+    const bOnline = onlineUsers.has(b.id) ? 1 : 0;
+
+    return bOnline - aOnline ||
+      a.username.localeCompare(b.username);
+  });
+
+  friends.forEach(profile => {
+    container.appendChild(
+      createFriendCard(profile)
+    );
+  });
+}
+
+function createFriendCard(profile) {
+  const card = makeElement("div", "friend-card");
+
+  card.classList.toggle(
+    "active",
+    selectedFriend?.id === profile.id
+  );
+
+  const avatar = makeElement(
+    "div",
+    "friend-avatar"
+  );
+
+  const online = onlineUsers.has(profile.id);
+
+  avatar.classList.toggle("online", online);
+
+  safeAvatar(
+    avatar,
+    profile.avatar_url,
+    profile.username?.[0]?.toUpperCase() || "K"
+  );
+
+  const info = makeElement("div", "friend-info");
+
+  const name = makeElement(
+    "strong",
+    "",
+    profile.username
+  );
+
+  const status = makeElement(
+    "small",
+    online ? "online-text" : "",
+    online
+      ? "● Online"
+      : formatLastSeen(profile.last_seen)
+  );
+
+  const speed = makeElement(
+    "small",
+    "",
+    `⚡ ${profile.best_wpm || 0} WPM`
+  );
+
+  info.append(name, status, speed);
+
+  const actions = makeElement(
+    "div",
+    "friend-actions"
+  );
+
+  const messageButton = makeElement(
+    "button",
+    "social-small-btn",
+    "💬"
+  );
+
+  messageButton.title = "Open chat";
+
+  messageButton.addEventListener("click", event => {
+    event.stopPropagation();
+    openChat(profile);
+  });
+
+  const removeButton = makeElement(
+    "button",
+    "social-small-btn remove",
+    "✕"
+  );
+
+  removeButton.title = "Remove friend";
+
+  removeButton.addEventListener("click", async event => {
+    event.stopPropagation();
+
+    if (!confirm(
+      `Remove ${profile.username} from your friends?`
+    )) return;
+
+    const friendship = friendships.find(item =>
+      item.status === "accepted" &&
+      (
+        (
+          item.sender_id === currentUser.id &&
+          item.receiver_id === profile.id
+        ) ||
+        (
+          item.receiver_id === currentUser.id &&
+          item.sender_id === profile.id
+        )
+      )
+    );
+
+    if (friendship) {
+      await deleteFriendship(friendship.id);
+    }
+  });
+
+  actions.append(messageButton, removeButton);
+
+  card.append(avatar, info, actions);
+
+  card.addEventListener("click", () => {
+    openChat(profile);
+  });
+
+  return card;
+}
+
+/* ==========================================
+   ONLINE PRESENCE
+========================================== */
+
+/*
+  Presence is advisory, not proof of identity
+  or a security boundary.
+
+  Private data remains protected by database RLS.
+
+  Production presence authorization must be
+  configured before relying on this indicator.
+*/
+
+function updateOnlineUsers() {
+  if (!presenceChannel) return;
+
+  const state = presenceChannel.presenceState();
+
+  const users = new Set();
+
+  for (const presences of Object.values(state)) {
+    for (const presence of presences) {
+      if (presence.user_id) {
+        users.add(presence.user_id);
+      }
+    }
+  }
+
+  onlineUsers = users;
+
+  renderFriendsList();
+  renderChatHeader();
+
+  const onlineFriends = getAcceptedFriends()
+    .filter(friend => onlineUsers.has(friend.id))
+    .length;
+
+  $("socialOnlineCount").textContent =
+    `🟢 ${onlineFriends} FRIENDS ONLINE`;
+}
+
+async function updateLastSeen() {
+  if (!currentUser || !db) return;
+
+  try {
+    const { error } = await db.rpc(
+      "update_my_last_seen"
+    );
+
+    if (error) {
+      console.warn("Activity update:", error.message);
+    }
+  } catch (error) {
+    console.warn("Activity update failed:", error);
+  }
+}
+
+function initializePresence() {
+  if (!currentUser || !db) return;
+
+  /*
+    This uses a shared presence topic.
+
+    The presence payload is browser-reported,
+    so it is not independently verified.
+
+    The database last_seen timestamp is used
+    as a fallback.
+  */
+
+  const userId = currentUser.id;
+
+  presenceChannel = db.channel(
+    "keystrike-v5-presence",
+    {
+      config: {
+        presence: {
+          key: userId
+        }
+      }
+    }
+  );
+
+  presenceChannel
+    .on("presence", { event: "sync" }, () => {
+      updateOnlineUsers();
+    })
+    .on("presence", { event: "join" }, () => {
+      updateOnlineUsers();
+    })
+    .on("presence", { event: "leave" }, () => {
+      updateOnlineUsers();
+    })
+    .subscribe(async status => {
+      if (
+        status === "SUBSCRIBED" &&
+        currentUser?.id === userId
+      ) {
+        await presenceChannel.track({
+          user_id: userId,
+          online_at: new Date().toISOString()
+        });
+      }
+    });
+}
+
+/* ==========================================
+   PRIVATE CHAT
+========================================== */
+
+function renderChatHeader() {
+  if (!selectedFriend) return;
+
+  $("chatFriendName").textContent =
+    selectedFriend.username;
+
+  safeAvatar(
+    $("chatFriendAvatar"),
+    selectedFriend.avatar_url,
+    selectedFriend.username?.[0]?.toUpperCase() || "K"
+  );
+
+  const online = onlineUsers.has(selectedFriend.id);
+
+  $("chatFriendStatus").textContent =
+    online
+      ? "● Online"
+      : formatLastSeen(selectedFriend.last_seen);
+
+  $("chatFriendStatus").classList.toggle(
+    "online",
+    online
+  );
+
+  $("chatFriendBest").textContent =
+    `${selectedFriend.best_wpm || 0} WPM`;
+
+  $("chatFriendTests").textContent =
+    selectedFriend.tests_completed || 0;
+}
+
+async function openChat(profile) {
+  if (!currentUser || !db) return;
+
+  const accepted = getAcceptedFriends()
+    .some(friend => friend.id === profile.id);
+
+  if (!accepted) {
+    showToast(
+      "You can only chat with accepted friends.",
+      "error"
+    );
+    return;
+  }
+
+  selectedFriend = profile;
+  chatMessages = [];
+
+  ++chatGeneration;
+
+  $("chatEmptyState").hidden = true;
+  $("chatConversation").hidden = false;
+
+  renderChatHeader();
+  renderFriendsList();
+
+  $("chatMessages").replaceChildren(
+    makeElement(
+      "div",
+      "social-empty-state",
+      "Loading conversation..."
+    )
+  );
+
+  await loadChatMessages();
+
+  if (window.innerWidth <= 700) {
+    $("socialChatPanel")?.scrollIntoView({
+      behavior: "smooth",
+      block: "start"
+    });
+
+    $("chatConversation").scrollIntoView({
+      behavior: "smooth",
+      block: "start"
+    });
+  }
+}
+
+function closeChat() {
+  ++chatGeneration;
+
+  selectedFriend = null;
+  chatMessages = [];
+
+  $("chatEmptyState").hidden = false;
+  $("chatConversation").hidden = true;
+
+  $("chatMessages").replaceChildren();
+
+  renderFriendsList();
+}
+
+async function loadChatMessages() {
+  if (!selectedFriend || !currentUser || !db) return;
+
+  const friendId = selectedFriend.id;
+  const userId = currentUser.id;
+  const generation = chatGeneration;
+
+  try {
+    const { data, error } = await db
+      .from("messages")
+      .select("*")
+      .or(
+        `and(sender_id.eq.${userId},receiver_id.eq.${friendId}),` +
+        `and(sender_id.eq.${friendId},receiver_id.eq.${userId})`
+      )
+      .order("created_at", { ascending: false })
+      .limit(100);
+
+    if (error) throw error;
+
+    const { data: clearData, error: clearError } = await db
+      .from("chat_clears")
+      .select("cleared_at")
+      .eq("user_id", userId)
+      .eq("friend_id", friendId)
+      .maybeSingle();
+
+    if (clearError) throw clearError;
+
+    if (
+      generation !== chatGeneration ||
+      selectedFriend?.id !== friendId ||
+      currentUser?.id !== userId
+    ) return;
+
+    const clearedAt = clearData?.cleared_at
+      ? new Date(clearData.cleared_at).getTime()
+      : 0;
+
+    chatMessages = (data || [])
+      .filter(message =>
+        new Date(message.created_at).getTime() > clearedAt
+      )
+      .reverse();
+
+    renderChatMessages();
+  } catch (error) {
+    console.error("Chat loading failed:", error);
+
+    $("chatMessages").replaceChildren(
+      makeElement(
+        "div",
+        "social-empty-state",
+        error.message
+      )
+    );
+  }
+}
+
+function renderChatMessages() {
+  const container = $("chatMessages");
+
+  container.replaceChildren();
+
+  if (!chatMessages.length) {
+    container.appendChild(
+      makeElement(
+        "div",
+        "social-empty-state",
+        "No messages yet. Say hello! 👋"
+      )
+    );
+    return;
+  }
+
+  let previousDate = "";
+
+  chatMessages.forEach(message => {
+    const date = new Date(
+      message.created_at
+    ).toLocaleDateString();
+
+    if (date !== previousDate) {
+      container.appendChild(
+        makeElement(
+          "div",
+          "chat-date-divider",
+          date
+        )
+      );
+
+      previousDate = date;
+    }
+
+    const own =
+      message.sender_id === currentUser.id;
+
+    const wrapper = makeElement(
+      "div",
+      own
+        ? "chat-message own"
+        : "chat-message"
+    );
+
+    const sender = makeElement(
+      "div",
+      "chat-message-sender",
+      own
+        ? "YOU"
+        : selectedFriend.username
+    );
+
+    const bubble = makeElement(
+      "div",
+      "chat-message-bubble",
+      message.content
+    );
+
+    const time = makeElement(
+      "div",
+      "chat-message-time",
+      formatTime(message.created_at)
+    );
+
+    wrapper.append(sender, bubble, time);
+
+    container.appendChild(wrapper);
+  });
+
+  container.scrollTop = container.scrollHeight;
+}
+
+$("chatMessageForm").addEventListener(
+  "submit",
+  async event => {
+    event.preventDefault();
+
+    if (!selectedFriend || !currentUser || !db) return;
+
+    const input = $("chatMessageInput");
+    const content = input.value.trim();
+
+    if (!content) return;
+
+    if (content.length > 2000) {
+      showToast("Message is too long.", "error");
+      return;
+    }
+
+    const receiverId = selectedFriend.id;
+    const button = $("sendChatButton");
+
+    button.disabled = true;
+
+    try {
+      const { error } = await db
+        .from("messages")
+        .insert({
+          sender_id: currentUser.id,
+          receiver_id: receiverId,
+          content
+        });
+
+      if (error) throw error;
+
+      input.value = "";
+
+      await loadChatMessages();
+    } catch (error) {
+      showToast(error.message, "error");
+    } finally {
+      button.disabled = false;
+    }
+  }
+);
+
+document.querySelectorAll("[data-quick-message]")
+  .forEach(button => {
+    button.addEventListener("click", () => {
+      if (!selectedFriend) return;
+
+      $("chatMessageInput").value =
+        button.dataset.quickMessage;
+
+      $("chatMessageInput").focus();
+    });
+  });
+
+$("closeChatButton").addEventListener(
+  "click",
+  closeChat
+);
+
+/* ==========================================
+   CLEAR CHAT FOR CURRENT USER
+========================================== */
+
+$("clearChatButton").addEventListener(
+  "click",
+  async () => {
+    if (!selectedFriend || !currentUser || !db) return;
+
+    if (!confirm(
+      "Clear this conversation from your view? Your friend will still have their messages."
+    )) return;
+
+    try {
+      const { error } = await db
+        .from("chat_clears")
+        .upsert(
+          {
+            user_id: currentUser.id,
+            friend_id: selectedFriend.id,
+            cleared_at: new Date().toISOString()
+          },
+          {
+            onConflict: "user_id,friend_id"
+          }
+        );
+
+      if (error) throw error;
+
+      await loadChatMessages();
+
+      showToast(
+        "Conversation cleared from your view.",
+        "success"
+      );
+    } catch (error) {
+      showToast(error.message, "error");
+    }
+  }
+);
+
+/* ==========================================
+   REALTIME SUBSCRIPTIONS
+========================================== */
+
+function initializeSocialRealtime() {
+  if (!currentUser || !db) return;
+
+  const userId = currentUser.id;
+
+  friendshipChannel = db
+    .channel(`keystrike-friends-${userId}`)
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "friendships",
+        filter: `sender_id=eq.${userId}`
+      },
+      () => refreshSocial()
+    )
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "friendships",
+        filter: `receiver_id=eq.${userId}`
+      },
+      () => refreshSocial()
+    )
+    .subscribe();
+
+  messageChannel = db
+    .channel(`keystrike-messages-${userId}`)
+    .on(
+      "postgres_changes",
+      {
+        event: "INSERT",
+        schema: "public",
+        table: "messages",
+        filter: `receiver_id=eq.${userId}`
+      },
+      () => {
+        if (selectedFriend) loadChatMessages();
+      }
+    )
+    .on(
+      "postgres_changes",
+      {
+        event: "INSERT",
+        schema: "public",
+        table: "messages",
+        filter: `sender_id=eq.${userId}`
+      },
+      () => {
+        if (selectedFriend) loadChatMessages();
+      }
+    )
+    .subscribe();
+}
+
+/* ==========================================
+   SOCIAL INITIALIZATION
+========================================== */
+
+async function initializeSocial() {
+  if (!currentUser || !db) return;
+
+  const userId = currentUser.id;
+
+  if (socialInitializedFor === userId) return;
+
+  socialInitializedFor = userId;
+
+  ++socialGeneration;
+
+  renderSocialAuth();
+
+  await refreshSocial();
+
+  if (currentUser?.id !== userId) return;
+
+  initializeSocialRealtime();
+  initializePresence();
+
+  await updateLastSeen();
+
+  activityTimer = setInterval(() => {
+    if (document.visibilityState === "visible") {
+      updateLastSeen();
+    }
+  }, 60000);
+
+  socialRefreshTimer = setInterval(async () => {
+    if (!currentUser) return;
+
+    await refreshSocial();
+
+    if (selectedFriend) {
+      await loadChatMessages();
+    }
+  }, 10000);
+}
+
+async function cleanupSocial() {
+  ++socialGeneration;
+  ++chatGeneration;
+
+  clearInterval(socialRefreshTimer);
+  clearInterval(activityTimer);
+
+  socialRefreshTimer = null;
+  activityTimer = null;
+
+  const channels = [
+    friendshipChannel,
+    messageChannel,
+    presenceChannel
+  ];
+
+  friendshipChannel = null;
+  messageChannel = null;
+  presenceChannel = null;
+
+  if (db) {
+    await Promise.all(
+      channels
+        .filter(Boolean)
+        .map(channel => db.removeChannel(channel))
+    );
+  }
+
+  friendships = [];
+  friendProfiles = new Map();
+
+  selectedFriend = null;
+  chatMessages = [];
+
+  onlineUsers = new Set();
+
+  socialInitializedFor = null;
+
+  $("friendsList").replaceChildren();
+  $("incomingFriendRequests").replaceChildren();
+  $("outgoingFriendRequests").replaceChildren();
+
+  $("searchResults").hidden = true;
+
+  $("friendsCount").textContent = "0";
+  $("friendRequestCount").textContent = "0";
+  $("friendsOnlineCount").textContent = "0 ONLINE";
+
+  $("chatEmptyState").hidden = false;
+  $("chatConversation").hidden = true;
+
+  $("socialNotification").hidden = true;
+
+  renderSocialAuth();
+}
+
+$("refreshSocialButton").addEventListener(
+  "click",
+  refreshSocial
+);
+
+$("refreshFriendsButton").addEventListener(
+  "click",
+  refreshSocial
+);
+
+document.addEventListener("visibilitychange", () => {
+  if (
+    document.visibilityState === "visible" &&
+    currentUser
+  ) {
+    updateLastSeen();
+    refreshSocial();
+
+    if (selectedFriend) loadChatMessages();
+  }
+});
+
+/* ==========================================
    TYPING TEST
-   ======================================== */
+========================================== */
 
 let mode = "words";
 let duration = 30;
@@ -1040,24 +2445,12 @@ function updateCharacters(previousText = "") {
   updateCaret();
 }
 
-/*
-  IMPORTANT V4 FIX:
-
-  We use the viewport's real scrollTop instead of
-  accumulating transform offsets.
-
-  The display never receives a translateY transform.
-
-  This prevents text from drifting off-screen.
-*/
-
 function updateCaret() {
   const viewport = $("wordsViewport");
   const display = $("wordsDisplay");
   const caret = $("typingCaret");
 
   if (!viewport || !display || !caret) return;
-
   if (!charElements.length) return;
 
   const index = Math.min(
@@ -1085,11 +2478,9 @@ function updateCaret() {
     charRect.left - viewportRect.left;
 
   const visibleTop = viewport.scrollTop;
+
   const visibleBottom =
     visibleTop + viewport.clientHeight;
-
-  // Keep the active line inside the three-line viewport.
-  // Scroll one line at a time for stable, predictable movement.
 
   if (naturalTop + lineHeight > visibleBottom + 1) {
     viewport.scrollTop =
@@ -1213,7 +2604,6 @@ function startTest() {
     if (elapsed >= duration) {
       finishTest(true);
     }
-
   }, 100);
 }
 
@@ -1264,14 +2654,6 @@ function finishTest(timed = false) {
     result.accuracy >= 90;
 
   $("newRecordMessage").hidden = !isRecord;
-
-  /*
-    Guest results stay local.
-    Signed-in results are saved to Supabase.
-
-    Cloud statistics are unverified practice results,
-    not tamper-proof competitive rankings.
-  */
 
   if (currentUser) {
     saveCloudResult(result);
@@ -1503,15 +2885,14 @@ document.addEventListener("keydown", event => {
 
     resetTest();
     typingInput.focus();
-
   } else if (event.key !== "Shift") {
     restartArmed = false;
   }
 });
 
-/* ========================================
+/* ==========================================
    BOT RACING
-   ======================================== */
+========================================== */
 
 let raceActive = false;
 let raceCountdownTimer = null;
@@ -1539,7 +2920,12 @@ function getBotSpeedRange() {
 }
 
 function createRaceTracks() {
-  const names = ["YOU", "BOT NOVA", "BOT ACE", "BOT FLASH"];
+  const names = [
+    "YOU",
+    "BOT NOVA",
+    "BOT ACE",
+    "BOT FLASH"
+  ];
 
   $("raceTracks").replaceChildren();
 
@@ -1549,22 +2935,30 @@ function createRaceTracks() {
     track.className = "race-track";
     track.dataset.racer = index;
 
-    const label = document.createElement("span");
-    label.className = "racer-name";
-    label.textContent = name;
+    const label = makeElement(
+      "span",
+      "racer-name",
+      name
+    );
 
-    const line = document.createElement("div");
-    line.className = "track-line";
+    const line = makeElement(
+      "div",
+      "track-line"
+    );
 
-    const car = document.createElement("span");
-    car.className = "race-car";
-    car.textContent = index === 0 ? "🏎" : "🚗";
+    const car = makeElement(
+      "span",
+      "race-car",
+      index === 0 ? "🏎" : "🚗"
+    );
 
     line.appendChild(car);
 
-    const percent = document.createElement("span");
-    percent.className = "race-percent";
-    percent.textContent = "0%";
+    const percent = makeElement(
+      "span",
+      "race-percent",
+      "0%"
+    );
 
     track.append(label, line, percent);
 
@@ -1596,7 +2990,6 @@ function renderRaceText() {
   $("raceText").replaceChildren();
 
   const input = $("raceInput").value;
-
   const fragment = document.createDocumentFragment();
 
   for (let i = 0; i < raceText.length; i++) {
@@ -1690,7 +3083,6 @@ function startRace() {
     $("raceInput").focus();
 
     raceInterval = setInterval(updateRace, 100);
-
   }, 1000);
 }
 
@@ -1749,7 +3141,10 @@ function updateRace() {
   }
 }
 
-$("startRaceButton").addEventListener("click", startRace);
+$("startRaceButton").addEventListener(
+  "click",
+  startRace
+);
 
 $("raceInput").addEventListener("input", () => {
   if (!raceActive) return;
@@ -1766,9 +3161,7 @@ $("raceInput").addEventListener("input", () => {
   let correct = 0;
 
   for (let i = 0; i < input.length; i++) {
-    if (input[i] === raceText[i]) {
-      correct++;
-    }
+    if (input[i] === raceText[i]) correct++;
   }
 
   const seconds = Math.max(
@@ -1782,10 +3175,8 @@ $("raceInput").addEventListener("input", () => {
 
   $("raceWpm").textContent = wpm;
 
-  // Progress is based on position; a valid finish
-  // requires the entire passage to match.
-
-  playerRaceProgress = input.length / raceText.length;
+  playerRaceProgress =
+    input.length / raceText.length;
 
   updateRaceCar(0, playerRaceProgress);
 
@@ -1798,9 +3189,91 @@ $("raceInput").addEventListener("input", () => {
   }
 });
 
-/* ========================================
+/* ==========================================
+   MULTIPLAYER INTERFACE
+   PHASES 3–5 PENDING
+========================================== */
+
+function multiplayerNotice() {
+  $("multiplayerMessage").textContent =
+    "Real multiplayer rooms are coming in Phase 3. " +
+    "This feature is not active yet.";
+
+  $("multiplayerMessage").className =
+    "multiplayer-message";
+
+  showToast(
+    "Real multiplayer is not implemented yet.",
+    "error"
+  );
+}
+
+$("botRaceTab").addEventListener("click", () => {
+  $("botRaceView").hidden = false;
+  $("multiplayerRaceView").hidden = true;
+
+  $("botRaceTab").classList.add("active");
+  $("multiplayerRaceTab").classList.remove("active");
+});
+
+$("multiplayerRaceTab").addEventListener("click", () => {
+  stopRace();
+
+  $("botRaceView").hidden = true;
+  $("multiplayerRaceView").hidden = false;
+
+  $("botRaceTab").classList.remove("active");
+  $("multiplayerRaceTab").classList.add("active");
+
+  multiplayerNotice();
+});
+
+$("createRoomButton").addEventListener(
+  "click",
+  multiplayerNotice
+);
+
+$("joinRoomForm").addEventListener(
+  "submit",
+  event => {
+    event.preventDefault();
+    multiplayerNotice();
+  }
+);
+
+$("chatInviteRaceButton").addEventListener(
+  "click",
+  multiplayerNotice
+);
+
+$("copyRoomCodeButton").addEventListener(
+  "click",
+  multiplayerNotice
+);
+
+$("leaveRoomButton").addEventListener(
+  "click",
+  multiplayerNotice
+);
+
+$("toggleReadyButton").addEventListener(
+  "click",
+  multiplayerNotice
+);
+
+$("startMultiplayerButton").addEventListener(
+  "click",
+  multiplayerNotice
+);
+
+$("raceAgainButton").addEventListener(
+  "click",
+  multiplayerNotice
+);
+
+/* ==========================================
    SURVIVAL MODE
-   ======================================== */
+========================================== */
 
 let survivalActive = false;
 let survivalHealth = 100;
@@ -1871,9 +3344,7 @@ $("survivalInput").addEventListener("input", () => {
 
     playSound("error");
 
-    if (survivalHealth <= 0) {
-      endSurvival();
-    }
+    if (survivalHealth <= 0) endSurvival();
 
     return;
   }
@@ -1884,14 +3355,13 @@ $("survivalInput").addEventListener("input", () => {
     $("survivalScore").textContent = survivalScore;
 
     playSound("correct");
-
     nextSurvivalWord();
   }
 });
 
-/* ========================================
+/* ==========================================
    SPEED RUSH
-   ======================================== */
+========================================== */
 
 let rushActive = false;
 let rushScore = 0;
@@ -1965,10 +3435,7 @@ function startRush() {
 
     $("rushTimer").textContent = remaining;
 
-    if (remaining <= 0) {
-      endRush();
-    }
-
+    if (remaining <= 0) endRush();
   }, 100);
 }
 
@@ -1988,29 +3455,30 @@ $("rushInput").addEventListener("input", () => {
     $("rushScore").textContent = rushScore;
 
     playSound("correct");
-
     nextRushWord();
-
   } else if (!rushCurrentWord.startsWith(input)) {
     playSound("error");
   }
 });
 
-/* ========================================
-   STATS
-   ======================================== */
+/* ==========================================
+   STATISTICS
+========================================== */
 
 function calculateSummary(results) {
   const tests = results.length;
 
   const best = tests
-    ? Math.max(...results.map(item => Number(item.wpm) || 0))
+    ? Math.max(
+        ...results.map(item => Number(item.wpm) || 0)
+      )
     : 0;
 
   const average = tests
     ? Math.round(
         results.reduce(
-          (sum, item) => sum + (Number(item.wpm) || 0),
+          (sum, item) =>
+            sum + (Number(item.wpm) || 0),
           0
         ) / tests
       )
@@ -2044,7 +3512,6 @@ function updatePersonalBest() {
 
 function updateStatsPage() {
   const history = getCurrentHistory();
-
   const summary = calculateSummary(history);
 
   $("statsBest").textContent = summary.best;
@@ -2066,37 +3533,46 @@ function updateStatsPage() {
   container.replaceChildren();
 
   if (!history.length) {
-    const empty = document.createElement("p");
+    const empty = makeElement(
+      "p",
+      "",
+      "No typing tests completed yet."
+    );
 
     empty.style.color = "var(--muted)";
     empty.style.fontSize = "12px";
 
-    empty.textContent = "No typing tests completed yet.";
-
     container.appendChild(empty);
-
     return;
   }
 
   history.slice(0, 20).forEach(result => {
-    const item = document.createElement("div");
+    const item = makeElement(
+      "div",
+      "history-item"
+    );
 
-    item.className = "history-item";
+    const date = makeElement(
+      "span",
+      "",
+      new Date(
+        result.created_at ||
+        result.date ||
+        Date.now()
+      ).toLocaleDateString()
+    );
 
-    const date = document.createElement("span");
+    const details = makeElement(
+      "span",
+      "",
+      `${result.mode || "words"} · ${result.duration || 30}s`
+    );
 
-    date.textContent = new Date(
-      result.created_at || result.date || Date.now()
-    ).toLocaleDateString();
-
-    const details = document.createElement("span");
-
-    details.textContent =
-      `${result.mode || "words"} · ${result.duration || 30}s`;
-
-    const speed = document.createElement("strong");
-
-    speed.textContent = `${result.wpm} WPM`;
+    const speed = makeElement(
+      "strong",
+      "",
+      `${result.wpm} WPM`
+    );
 
     item.append(date, details, speed);
 
@@ -2104,9 +3580,9 @@ function updateStatsPage() {
   });
 }
 
-/* ========================================
+/* ==========================================
    NAVIGATION
-   ======================================== */
+========================================== */
 
 function navigate(page) {
   const target = $(page + "Page");
@@ -2153,6 +3629,18 @@ function navigate(page) {
     updateStatsPage();
   }
 
+  if (page === "social") {
+    renderSocialAuth();
+
+    if (currentUser) {
+      refreshSocial();
+
+      if (selectedFriend) {
+        loadChatMessages();
+      }
+    }
+  }
+
   window.scrollTo({
     top: 0,
     behavior: "smooth"
@@ -2170,9 +3658,9 @@ $("logo").addEventListener("click", event => {
   navigate("type");
 });
 
-/* ========================================
+/* ==========================================
    RESIZE HANDLING
-   ======================================== */
+========================================== */
 
 window.addEventListener("resize", () => {
   requestAnimationFrame(updateCaret);
@@ -2186,9 +3674,9 @@ window.addEventListener("resize", () => {
   }
 });
 
-/* ========================================
+/* ==========================================
    INITIALIZATION
-   ======================================== */
+========================================== */
 
 function initialize() {
   applySettings();
@@ -2201,11 +3689,12 @@ function initialize() {
   resetTest();
 
   renderAccount();
+  renderSocialAuth();
 
   initializeAuth();
 
   console.log(
-    "%c⚡ KEYSTRIKE V4 READY",
+    "%c⚡ KEYSTRIKE V5 READY",
     "color:#65a8ff;font-size:22px;font-weight:bold"
   );
 }
