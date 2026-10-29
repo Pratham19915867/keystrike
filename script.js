@@ -3189,34 +3189,40 @@ $("raceInput").addEventListener("input", () => {
   }
 });
 
+
 /* ==========================================
-   MULTIPLAYER INTERFACE
-   PHASES 3–5 PENDING
+   KEYSTRIKE V5 — REAL MULTIPLAYER ROOMS
 ========================================== */
 
-function multiplayerNotice() {
-  $("multiplayerMessage").textContent =
-    "Real multiplayer rooms are coming in Phase 3. " +
-    "This feature is not active yet.";
+let mpRoom = null;
+let mpPlayers = [];
+let mpChannel = null;
+let mpTimer = null;
+let mpBusy = false;
+let mpLoading = false;
+let mpVersion = 0;
 
+function mpMessage(text, type = "") {
+  $("multiplayerMessage").textContent = text;
   $("multiplayerMessage").className =
-    "multiplayer-message";
-
-  showToast(
-    "Real multiplayer is not implemented yet.",
-    "error"
-  );
+    "multiplayer-message " + type;
 }
 
-$("botRaceTab").addEventListener("click", () => {
-  $("botRaceView").hidden = false;
-  $("multiplayerRaceView").hidden = true;
+function mpHome() {
+  $("multiplayerHome").hidden = false;
+  $("multiplayerLobby").hidden = true;
+  $("multiplayerRace").hidden = true;
+  $("multiplayerResults").hidden = true;
+}
 
-  $("botRaceTab").classList.add("active");
-  $("multiplayerRaceTab").classList.remove("active");
-});
+function mpLobby() {
+  $("multiplayerHome").hidden = true;
+  $("multiplayerLobby").hidden = false;
+  $("multiplayerRace").hidden = true;
+  $("multiplayerResults").hidden = true;
+}
 
-$("multiplayerRaceTab").addEventListener("click", () => {
+function mpTab() {
   stopRace();
 
   $("botRaceView").hidden = true;
@@ -3224,52 +3230,538 @@ $("multiplayerRaceTab").addEventListener("click", () => {
 
   $("botRaceTab").classList.remove("active");
   $("multiplayerRaceTab").classList.add("active");
+}
 
-  multiplayerNotice();
+function mpRequireLogin() {
+  if (currentUser && db) return false;
+
+  mpMessage("Sign in to play multiplayer.", "error");
+  showToast("Please sign in.", "error");
+  openAccount();
+
+  return true;
+}
+
+function mpButtons() {
+  $("createRoomButton").disabled = mpBusy;
+
+  const joinButton =
+    $("joinRoomForm").querySelector('button[type="submit"]');
+
+  if (joinButton) joinButton.disabled = mpBusy;
+
+  $("leaveRoomButton").disabled = mpBusy;
+
+  $("toggleReadyButton").disabled =
+    mpBusy || !mpRoom || mpRoom.status !== "waiting";
+}
+
+async function mpCleanup() {
+  mpVersion++;
+
+  clearInterval(mpTimer);
+  mpTimer = null;
+
+  const channel = mpChannel;
+  mpChannel = null;
+
+  mpRoom = null;
+  mpPlayers = [];
+  mpLoading = false;
+
+  sessionStorage.removeItem("ks_active_room");
+
+  mpHome();
+
+  if (channel && db) {
+    try {
+      await db.removeChannel(channel);
+    } catch (error) {
+      console.warn(error);
+    }
+  }
+}
+
+function mpRender() {
+  if (!mpRoom || !currentUser) return;
+
+  mpLobby();
+
+  $("lobbyRoomCode").textContent = mpRoom.room_code;
+
+  $("lobbyPlayerCount").textContent =
+    mpPlayers.length + " / " + mpRoom.max_players + " PLAYERS";
+
+  const container = $("lobbyPlayers");
+  container.replaceChildren();
+
+  mpPlayers.forEach(player => {
+    const name =
+      player.profile?.username ||
+      "Player " + player.user_id.slice(0, 6);
+
+    const card = makeElement("div", "lobby-player-card");
+    const avatar = makeElement("div", "player-avatar");
+
+    safeAvatar(
+      avatar,
+      player.profile?.avatar_url,
+      name[0].toUpperCase()
+    );
+
+    const info = makeElement("div", "player-info");
+
+    info.append(
+      makeElement(
+        "strong",
+        "",
+        name +
+          (player.user_id === currentUser.id ? " (YOU)" : "")
+      ),
+      makeElement(
+        "small",
+        "",
+        "⚡ " + (player.profile?.best_wpm || 0) + " WPM" +
+          (player.user_id === mpRoom.host_id
+            ? " · 👑 HOST"
+            : "")
+      )
+    );
+
+    const status = makeElement(
+      "span",
+      player.is_ready
+        ? "lobby-player-ready"
+        : "lobby-player-waiting",
+      player.is_ready ? "✓ READY" : "WAITING"
+    );
+
+    card.append(avatar, info, status);
+    container.appendChild(card);
+  });
+
+  for (
+    let i = mpPlayers.length;
+    i < mpRoom.max_players;
+    i++
+  ) {
+    container.appendChild(
+      makeElement(
+        "div",
+        "lobby-player-card lobby-empty-slot",
+        "+ Waiting for player..."
+      )
+    );
+  }
+
+  const me = mpPlayers.find(
+    p => p.user_id === currentUser.id
+  );
+
+  $("toggleReadyButton").textContent =
+    me?.is_ready ? "✓ READY" : "I'M READY";
+
+  $("startMultiplayerButton").hidden =
+    mpRoom.host_id !== currentUser.id;
+
+  $("startMultiplayerButton").disabled = true;
+
+  $("startMultiplayerButton").textContent =
+    "RACE ENGINE COMING NEXT";
+
+  if (mpRoom.status !== "waiting") {
+    $("lobbyStatus").textContent =
+      "Room is currently racing or finished.";
+  } else if (mpPlayers.length < 2) {
+    $("lobbyStatus").textContent =
+      "Waiting for another player...";
+  } else if (!mpPlayers.every(p => p.is_ready)) {
+    $("lobbyStatus").textContent =
+      "Waiting for all players to be ready...";
+  } else {
+    $("lobbyStatus").textContent =
+      "Everyone is ready!";
+  }
+
+  mpButtons();
+}
+
+async function mpRefresh() {
+  if (!db || !currentUser || !mpRoom || mpLoading) return;
+
+  mpLoading = true;
+
+  const roomId = mpRoom.id;
+  const userId = currentUser.id;
+  const version = mpVersion;
+
+  try {
+    const [roomResult, playersResult] = await Promise.all([
+      db.from("race_rooms")
+        .select("*")
+        .eq("id", roomId)
+        .maybeSingle(),
+
+      db.from("race_players")
+        .select("*")
+        .eq("room_id", roomId)
+        .order("joined_at", { ascending: true })
+    ]);
+
+    if (roomResult.error) throw roomResult.error;
+    if (playersResult.error) throw playersResult.error;
+
+    if (
+      version !== mpVersion ||
+      currentUser?.id !== userId
+    ) return;
+
+    const room = roomResult.data;
+    const players = playersResult.data || [];
+
+    if (
+      !room ||
+      !players.some(p => p.user_id === userId)
+    ) {
+      await mpCleanup();
+      mpMessage("Room closed or access removed.", "error");
+      return;
+    }
+
+    const profiles = await getProfilesByIds(
+      players.map(p => p.user_id)
+    );
+
+    if (
+      version !== mpVersion ||
+      currentUser?.id !== userId
+    ) return;
+
+    const map = new Map(
+      profiles.map(p => [p.id, p])
+    );
+
+    mpRoom = room;
+
+    mpPlayers = players.map(p => ({
+      ...p,
+      profile: map.get(p.user_id) || null
+    }));
+
+    mpRender();
+  } catch (error) {
+    console.error("Multiplayer refresh:", error);
+    mpMessage(error.message, "error");
+  } finally {
+    mpLoading = false;
+  }
+}
+
+async function mpEnter(roomId) {
+  await mpCleanup();
+
+  if (!currentUser || !db) return;
+
+  const version = mpVersion;
+  const userId = currentUser.id;
+
+  mpRoom = { id: roomId };
+
+  mpTab();
+  mpLobby();
+
+  mpMessage("Loading private room...");
+
+  await mpRefresh();
+
+  if (
+    version !== mpVersion ||
+    currentUser?.id !== userId ||
+    mpRoom?.id !== roomId
+  ) return;
+
+  sessionStorage.setItem(
+    "ks_active_room",
+    JSON.stringify({ roomId, userId })
+  );
+
+  mpChannel = db
+    .channel("ks-room-" + roomId + "-" + Date.now())
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "race_rooms",
+        filter: "id=eq." + roomId
+      },
+      mpRefresh
+    )
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "race_players",
+        filter: "room_id=eq." + roomId
+      },
+      mpRefresh
+    )
+    .subscribe();
+
+  mpTimer = setInterval(mpRefresh, 5000);
+
+  mpMessage("");
+
+  navigate("race");
+  mpTab();
+}
+
+async function mpCreate() {
+  if (mpRequireLogin() || mpBusy) return;
+
+  mpBusy = true;
+  mpButtons();
+
+  mpMessage("Creating private room...");
+
+  try {
+    const { data, error } =
+      await db.rpc("create_race_room");
+
+    if (error) throw error;
+
+    const room = Array.isArray(data)
+      ? data[0]
+      : data;
+
+    if (!room?.room_id) {
+      throw new Error("No room ID returned.");
+    }
+
+    await mpEnter(room.room_id);
+
+    showToast(
+      "Room created: " + room.code,
+      "success"
+    );
+  } catch (error) {
+    mpMessage(error.message, "error");
+    showToast(error.message, "error");
+  } finally {
+    mpBusy = false;
+    mpButtons();
+  }
+}
+
+async function mpJoin(event) {
+  event.preventDefault();
+
+  if (mpRequireLogin() || mpBusy) return;
+
+  const code =
+    $("joinRoomCode").value.trim().toUpperCase();
+
+  if (!/^[A-Z0-9]{6}$/.test(code)) {
+    mpMessage("Enter a six-character room code.", "error");
+    return;
+  }
+
+  mpBusy = true;
+  mpButtons();
+
+  mpMessage("Joining room...");
+
+  try {
+    const { data, error } = await db.rpc(
+      "join_race_room",
+      { input_code: code }
+    );
+
+    if (error) throw error;
+
+    await mpEnter(data);
+
+    showToast("Joined room!", "success");
+  } catch (error) {
+    mpMessage(error.message, "error");
+    showToast(error.message, "error");
+  } finally {
+    mpBusy = false;
+    mpButtons();
+  }
+}
+
+async function mpLeave() {
+  if (!mpRoom || !currentUser || mpBusy) return;
+
+  mpBusy = true;
+  mpButtons();
+
+  try {
+    const { error } = await db.rpc(
+      "leave_race_room",
+      { target_room_id: mpRoom.id }
+    );
+
+    if (error) throw error;
+
+    await mpCleanup();
+
+    mpMessage("You left the room.", "success");
+  } catch (error) {
+    mpMessage(error.message, "error");
+  } finally {
+    mpBusy = false;
+    mpButtons();
+  }
+}
+
+async function mpReady() {
+  if (!mpRoom || !currentUser || mpBusy) return;
+
+  const me = mpPlayers.find(
+    p => p.user_id === currentUser.id
+  );
+
+  if (!me) return;
+
+  mpBusy = true;
+  mpButtons();
+
+  try {
+    const { error } = await db.rpc(
+      "set_race_ready",
+      {
+        target_room_id: mpRoom.id,
+        ready_state: !me.is_ready
+      }
+    );
+
+    if (error) throw error;
+
+    await mpRefresh();
+  } catch (error) {
+    mpMessage(error.message, "error");
+  } finally {
+    mpBusy = false;
+    mpButtons();
+  }
+}
+
+$("botRaceTab").addEventListener("click", () => {
+  $("botRaceView").hidden = false;
+  $("multiplayerRaceView").hidden = true;
+  $("botRaceTab").classList.add("active");
+  $("multiplayerRaceTab").classList.remove("active");
 });
 
-$("createRoomButton").addEventListener(
-  "click",
-  multiplayerNotice
-);
+$("multiplayerRaceTab").addEventListener("click", () => {
+  mpTab();
 
-$("joinRoomForm").addEventListener(
-  "submit",
-  event => {
-    event.preventDefault();
-    multiplayerNotice();
+  if (mpRoom) {
+    mpRender();
+  } else {
+    mpHome();
+    mpMessage("");
+  }
+});
+
+$("createRoomButton").addEventListener("click", mpCreate);
+$("joinRoomForm").addEventListener("submit", mpJoin);
+$("leaveRoomButton").addEventListener("click", mpLeave);
+$("toggleReadyButton").addEventListener("click", mpReady);
+
+$("copyRoomCodeButton").addEventListener(
+  "click",
+  async () => {
+    if (!mpRoom?.room_code) return;
+
+    try {
+      await navigator.clipboard.writeText(
+        mpRoom.room_code
+      );
+      showToast("Room code copied!", "success");
+    } catch {
+      showToast("Room code: " + mpRoom.room_code);
+    }
   }
 );
 
 $("chatInviteRaceButton").addEventListener(
   "click",
-  multiplayerNotice
-);
+  async () => {
+    if (!currentUser || !selectedFriend) return;
 
-$("copyRoomCodeButton").addEventListener(
-  "click",
-  multiplayerNotice
-);
+    if (!mpRoom?.room_code) {
+      showToast("Create a room first.", "error");
+      navigate("race");
+      mpTab();
+      return;
+    }
 
-$("leaveRoomButton").addEventListener(
-  "click",
-  multiplayerNotice
-);
+    try {
+      const { error } = await db
+        .from("messages")
+        .insert({
+          sender_id: currentUser.id,
+          receiver_id: selectedFriend.id,
+          content:
+            "🏎 KEYSTRIKE RACE INVITE\\nRoom code: " +
+            mpRoom.room_code
+        });
 
-$("toggleReadyButton").addEventListener(
-  "click",
-  multiplayerNotice
+      if (error) throw error;
+
+      showToast("Race invitation sent!", "success");
+      await loadChatMessages();
+    } catch (error) {
+      showToast(error.message, "error");
+    }
+  }
 );
 
 $("startMultiplayerButton").addEventListener(
   "click",
-  multiplayerNotice
+  () => showToast(
+    "Live racing requires the next backend update.",
+    "error"
+  )
 );
 
 $("raceAgainButton").addEventListener(
   "click",
-  multiplayerNotice
+  () => showToast(
+    "Race again is not available yet.",
+    "error"
+  )
 );
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && mpRoom) {
+    mpRefresh();
+  }
+});
+
+db?.auth.getUser().then(({ data }) => {
+  if (!data?.user) return;
+
+  try {
+    const saved = JSON.parse(
+      sessionStorage.getItem("ks_active_room") || "null"
+    );
+
+    if (
+      saved?.userId === data.user.id &&
+      saved.roomId
+    ) {
+      mpEnter(saved.roomId);
+    }
+  } catch (error) {
+    console.warn("Room restoration:", error);
+  }
+});
+
 
 /* ==========================================
    SURVIVAL MODE
