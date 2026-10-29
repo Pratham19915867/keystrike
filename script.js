@@ -2,13 +2,13 @@
 
 /* ==========================================
    KEYSTRIKE V5
-   SOCIAL & REAL MULTIPLAYER
+   SOCIAL & MULTIPLAYER UPDATE
 
-   PHASE 1: FRIENDS
+   PHASE 1: FRIEND SYSTEM
    PHASE 2: PRIVATE CHAT
-   PHASE 3: REAL MULTIPLAYER ROOMS
 
-   Supabase-backed room management
+   Multiplayer rooms and live racing:
+   NOT YET IMPLEMENTED
 ========================================== */
 
 /* ==========================================
@@ -621,7 +621,6 @@ function renderAccount() {
 
   $("profileName").textContent = name;
   $("accountDisplayName").textContent = name;
-
   $("accountEmail").textContent =
     currentUser.email || "Signed in";
 
@@ -642,11 +641,8 @@ function renderAccount() {
 
   const summary = calculateSummary(cloudResults);
 
-  $("accountBest").textContent =
-    currentProfile?.best_wpm ?? summary.best;
-
-  $("accountTests").textContent =
-    currentProfile?.tests_completed ?? summary.tests;
+  $("accountBest").textContent = summary.best;
+  $("accountTests").textContent = summary.tests;
 }
 
 $("googleLoginButton").addEventListener("click", async () => {
@@ -848,7 +844,6 @@ async function refreshAccount(user) {
 
   if (previousId !== nextId) {
     await cleanupSocial();
-    await cleanupMultiplayer();
   }
 
   renderAccount();
@@ -875,7 +870,6 @@ async function refreshAccount(user) {
 
     if (previousId !== nextId) {
       await initializeSocial();
-      await restoreMultiplayerRoom();
     }
   } catch (error) {
     if (generation !== authGeneration) return;
@@ -892,7 +886,6 @@ async function refreshAccount(user) {
 
     if (previousId !== nextId) {
       await initializeSocial();
-      await restoreMultiplayerRoom();
     }
   }
 }
@@ -988,6 +981,7 @@ async function saveCloudResult(result) {
       "CLOUD SAVE FAILED";
   }
 }
+
 /* ==========================================
    SOCIAL SYSTEM STATE
 ========================================== */
@@ -1298,16 +1292,9 @@ function createSearchPlayerCard(profile) {
   button.disabled = Boolean(relationship);
 
   button.addEventListener("click", async () => {
-    if (button.disabled) return;
-
+    await sendFriendRequest(profile.id);
     button.disabled = true;
-
-    try {
-      await sendFriendRequest(profile.id);
-      button.textContent = "PENDING";
-    } catch (error) {
-      button.disabled = false;
-    }
+    button.textContent = "PENDING";
   });
 
   actions.appendChild(button);
@@ -1318,12 +1305,11 @@ function createSearchPlayerCard(profile) {
 }
 
 async function sendFriendRequest(receiverId) {
-  if (!currentUser || !db) {
-    throw new Error("Sign in to send friend requests.");
-  }
+  if (!currentUser || !db) return;
 
   if (receiverId === currentUser.id) {
-    throw new Error("You cannot add yourself.");
+    showToast("You cannot add yourself.", "error");
+    return;
   }
 
   try {
@@ -1342,6 +1328,7 @@ async function sendFriendRequest(receiverId) {
     await refreshSocial();
   } catch (error) {
     showToast(error.message, "error");
+
     throw error;
   }
 }
@@ -1709,8 +1696,13 @@ function createFriendCard(profile) {
 ========================================== */
 
 /*
-  Presence is advisory, not proof of identity.
-  Supabase RLS protects private database data.
+  Presence is advisory, not proof of identity
+  or a security boundary.
+
+  Private data remains protected by database RLS.
+
+  Production presence authorization must be
+  configured before relying on this indicator.
 */
 
 function updateOnlineUsers() {
@@ -1759,6 +1751,16 @@ async function updateLastSeen() {
 
 function initializePresence() {
   if (!currentUser || !db) return;
+
+  /*
+    This uses a shared presence topic.
+
+    The presence payload is browser-reported,
+    so it is not independently verified.
+
+    The database last_seen timestamp is used
+    as a fallback.
+  */
 
   const userId = currentUser.id;
 
@@ -1867,6 +1869,11 @@ async function openChat(profile) {
   await loadChatMessages();
 
   if (window.innerWidth <= 700) {
+    $("socialChatPanel")?.scrollIntoView({
+      behavior: "smooth",
+      block: "start"
+    });
+
     $("chatConversation").scrollIntoView({
       behavior: "smooth",
       block: "start"
@@ -2123,7 +2130,7 @@ $("clearChatButton").addEventListener(
 );
 
 /* ==========================================
-   REALTIME SOCIAL SUBSCRIPTIONS
+   REALTIME SUBSCRIPTIONS
 ========================================== */
 
 function initializeSocialRealtime() {
@@ -2304,6 +2311,7 @@ document.addEventListener("visibilitychange", () => {
     if (selectedFriend) loadChatMessages();
   }
 });
+
 /* ==========================================
    TYPING TEST
 ========================================== */
@@ -3182,710 +3190,23 @@ $("raceInput").addEventListener("input", () => {
 });
 
 /* ==========================================
-   REAL MULTIPLAYER — ROOM MANAGEMENT
-   PHASE 3
-
-   Database RPC functions:
-   - create_race_room
-   - join_race_room
-   - leave_race_room
-   - set_race_ready
-
-   All room modifications are authorized
-   inside Supabase.
-
-   Live typing races require Phase 4 RPCs.
+   MULTIPLAYER INTERFACE
+   PHASES 3–5 PENDING
 ========================================== */
 
-let multiplayerRoom = null;
-let multiplayerPlayers = [];
-
-let multiplayerChannel = null;
-let multiplayerRefreshTimer = null;
-
-let multiplayerGeneration = 0;
-let multiplayerRefreshing = false;
-let multiplayerBusy = false;
-
-const MULTIPLAYER_STORAGE_KEY =
-  "keystrike_v5_active_room";
-
-function multiplayerMessage(message, type = "") {
-  $("multiplayerMessage").textContent = message;
+function multiplayerNotice() {
+  $("multiplayerMessage").textContent =
+    "Real multiplayer rooms are coming in Phase 3. " +
+    "This feature is not active yet.";
 
   $("multiplayerMessage").className =
-    "multiplayer-message " + type;
-}
+    "multiplayer-message";
 
-function multiplayerRequiresLogin() {
-  if (currentUser && db) return false;
-
-  multiplayerMessage(
-    "Sign in to create or join multiplayer rooms.",
+  showToast(
+    "Real multiplayer is not implemented yet.",
     "error"
   );
-
-  showToast("Sign in to play multiplayer.", "error");
-
-  openAccount();
-
-  return true;
 }
-
-function setMultiplayerBusy(busy) {
-  multiplayerBusy = busy;
-
-  $("createRoomButton").disabled = busy;
-
-  const joinButton = $("joinRoomForm")
-    .querySelector('button[type="submit"]');
-
-  if (joinButton) {
-    joinButton.disabled = busy;
-  }
-
-  $("toggleReadyButton").disabled =
-    busy || !multiplayerRoom;
-
-  $("leaveRoomButton").disabled =
-    busy || !multiplayerRoom;
-}
-
-function showMultiplayerHome() {
-  $("multiplayerHome").hidden = false;
-  $("multiplayerLobby").hidden = true;
-  $("multiplayerRace").hidden = true;
-  $("multiplayerResults").hidden = true;
-
-  $("multiplayerInput").disabled = true;
-
-  $("startMultiplayerButton").disabled = true;
-}
-
-function showMultiplayerLobby() {
-  $("multiplayerHome").hidden = true;
-  $("multiplayerLobby").hidden = false;
-  $("multiplayerRace").hidden = true;
-  $("multiplayerResults").hidden = true;
-
-  $("multiplayerInput").disabled = true;
-}
-
-function getMyMultiplayerPlayer() {
-  if (!currentUser) return null;
-
-  return multiplayerPlayers.find(
-    player => player.user_id === currentUser.id
-  ) || null;
-}
-
-async function loadMultiplayerPlayers(roomId) {
-  const { data: players, error } = await db
-    .from("race_players")
-    .select("*")
-    .eq("room_id", roomId)
-    .order("joined_at", { ascending: true });
-
-  if (error) throw error;
-
-  const ids = [
-    ...new Set(
-      (players || []).map(player => player.user_id)
-    )
-  ];
-
-  const profiles = await getProfilesByIds(ids);
-
-  const profileMap = new Map(
-    profiles.map(profile => [profile.id, profile])
-  );
-
-  return (players || []).map(player => ({
-    ...player,
-    profile: profileMap.get(player.user_id) || null
-  }));
-}
-
-async function refreshMultiplayerRoom() {
-  if (
-    !currentUser ||
-    !db ||
-    !multiplayerRoom ||
-    multiplayerRefreshing
-  ) {
-    return;
-  }
-
-  const roomId = multiplayerRoom.id;
-  const userId = currentUser.id;
-  const generation = multiplayerGeneration;
-
-  multiplayerRefreshing = true;
-
-  try {
-    const { data: room, error: roomError } = await db
-      .from("race_rooms")
-      .select("*")
-      .eq("id", roomId)
-      .maybeSingle();
-
-    if (roomError) throw roomError;
-
-    if (
-      generation !== multiplayerGeneration ||
-      currentUser?.id !== userId
-    ) {
-      return;
-    }
-
-    if (!room) {
-      await cleanupMultiplayer();
-
-      multiplayerMessage(
-        "This room has closed or you are no longer a member.",
-        "error"
-      );
-
-      return;
-    }
-
-    const players = await loadMultiplayerPlayers(roomId);
-
-    if (
-      generation !== multiplayerGeneration ||
-      currentUser?.id !== userId ||
-      multiplayerRoom?.id !== roomId
-    ) {
-      return;
-    }
-
-    const stillMember = players.some(
-      player => player.user_id === userId
-    );
-
-    if (!stillMember) {
-      await cleanupMultiplayer();
-
-      multiplayerMessage(
-        "You are no longer in this room.",
-        "error"
-      );
-
-      return;
-    }
-
-    multiplayerRoom = room;
-    multiplayerPlayers = players;
-
-    renderMultiplayerLobby();
-  } catch (error) {
-    console.error("Multiplayer refresh:", error);
-
-    multiplayerMessage(
-      "Could not refresh the room: " + error.message,
-      "error"
-    );
-  } finally {
-    multiplayerRefreshing = false;
-  }
-}
-
-function createLobbyPlayerCard(player) {
-  const profile = player.profile;
-
-  const username =
-    profile?.username ||
-    "Player " + player.user_id.slice(0, 6);
-
-  const isHost =
-    player.user_id === multiplayerRoom.host_id;
-
-  const isYou =
-    player.user_id === currentUser?.id;
-
-  const card = makeElement(
-    "div",
-    "lobby-player-card"
-  );
-
-  const avatar = makeElement(
-    "div",
-    "player-avatar"
-  );
-
-  safeAvatar(
-    avatar,
-    profile?.avatar_url,
-    username[0].toUpperCase()
-  );
-
-  const info = makeElement(
-    "div",
-    "player-info"
-  );
-
-  const name = makeElement(
-    "strong",
-    "",
-    username + (isYou ? " (YOU)" : "")
-  );
-
-  const details = makeElement(
-    "small",
-    "",
-    `⚡ ${profile?.best_wpm || 0} WPM` +
-    (isHost ? " · 👑 HOST" : "")
-  );
-
-  info.append(name, details);
-
-  const status = makeElement(
-    "span",
-    player.is_ready
-      ? "lobby-player-ready"
-      : "lobby-player-waiting",
-    player.is_ready ? "✓ READY" : "WAITING"
-  );
-
-  card.append(avatar, info, status);
-
-  return card;
-}
-
-function renderMultiplayerLobby() {
-  if (!multiplayerRoom) {
-    showMultiplayerHome();
-    return;
-  }
-
-  showMultiplayerLobby();
-
-  $("lobbyRoomCode").textContent =
-    multiplayerRoom.room_code;
-
-  $("lobbyPlayerCount").textContent =
-    `${multiplayerPlayers.length} / ${multiplayerRoom.max_players} PLAYERS`;
-
-  const container = $("lobbyPlayers");
-
-  container.replaceChildren();
-
-  multiplayerPlayers.forEach(player => {
-    container.appendChild(
-      createLobbyPlayerCard(player)
-    );
-  });
-
-  const remaining =
-    multiplayerRoom.max_players -
-    multiplayerPlayers.length;
-
-  for (let i = 0; i < remaining; i++) {
-    container.appendChild(
-      makeElement(
-        "div",
-        "lobby-player-card lobby-empty-slot",
-        "+ Waiting for player..."
-      )
-    );
-  }
-
-  const myPlayer = getMyMultiplayerPlayer();
-
-  const isHost =
-    multiplayerRoom.host_id === currentUser?.id;
-
-  const allReady =
-    multiplayerPlayers.length >= 2 &&
-    multiplayerPlayers.every(player => player.is_ready);
-
-  $("toggleReadyButton").textContent =
-    myPlayer?.is_ready
-      ? "✓ I'M READY"
-      : "I'M READY";
-
-  $("toggleReadyButton").classList.toggle(
-    "active",
-    Boolean(myPlayer?.is_ready)
-  );
-
-  $("toggleReadyButton").disabled =
-    multiplayerBusy ||
-    multiplayerRoom.status !== "waiting";
-
-  const startButton = $("startMultiplayerButton");
-
-  startButton.hidden = !isHost;
-
-  /*
-    Race starting is intentionally disabled.
-
-    The database currently supports room
-    management, not synchronized races.
-
-    Phase 4 will implement secure start,
-    countdown, progress and results.
-  */
-
-  startButton.disabled = true;
-
-  startButton.textContent =
-    "RACE ENGINE COMING NEXT";
-
-  if (multiplayerRoom.status !== "waiting") {
-    $("lobbyStatus").textContent =
-      "This room has a race in progress.";
-
-    return;
-  }
-
-  if (multiplayerPlayers.length < 2) {
-    $("lobbyStatus").textContent =
-      "Waiting for at least 2 players...";
-  } else if (!allReady) {
-    $("lobbyStatus").textContent =
-      "Waiting for every player to select READY.";
-  } else {
-    $("lobbyStatus").textContent =
-      isHost
-        ? "Everyone is ready! Race engine is being connected."
-        : "Everyone is ready! Waiting for the host.";
-  }
-}
-
-function subscribeMultiplayerRoom(roomId) {
-  if (!db) return;
-
-  if (multiplayerChannel) {
-    db.removeChannel(multiplayerChannel);
-    multiplayerChannel = null;
-  }
-
-  multiplayerChannel = db
-    .channel(`keystrike-room-${roomId}-${Date.now()}`)
-    .on(
-      "postgres_changes",
-      {
-        event: "*",
-        schema: "public",
-        table: "race_rooms",
-        filter: `id=eq.${roomId}`
-      },
-      () => refreshMultiplayerRoom()
-    )
-    .on(
-      "postgres_changes",
-      {
-        event: "*",
-        schema: "public",
-        table: "race_players",
-        filter: `room_id=eq.${roomId}`
-      },
-      () => refreshMultiplayerRoom()
-    )
-    .subscribe(status => {
-      if (status === "CHANNEL_ERROR") {
-        console.warn(
-          "Multiplayer Realtime unavailable; polling remains active."
-        );
-      }
-    });
-}
-
-async function enterMultiplayerRoom(roomId) {
-  if (!currentUser || !db) return;
-
-  await cleanupMultiplayer();
-
-  const generation = multiplayerGeneration;
-
-  multiplayerRoom = {
-    id: roomId
-  };
-
-  multiplayerMessage("Connecting to private room...");
-
-  subscribeMultiplayerRoom(roomId);
-
-  multiplayerRefreshTimer = setInterval(() => {
-    refreshMultiplayerRoom();
-  }, 3000);
-
-  await refreshMultiplayerRoom();
-
-  if (
-    generation !== multiplayerGeneration ||
-    multiplayerRoom?.id !== roomId
-  ) {
-    return;
-  }
-
-  storageSet(
-    MULTIPLAYER_STORAGE_KEY,
-    {
-      roomId,
-      userId: currentUser.id
-    }
-  );
-
-  $("botRaceView").hidden = true;
-  $("multiplayerRaceView").hidden = false;
-
-  $("botRaceTab").classList.remove("active");
-  $("multiplayerRaceTab").classList.add("active");
-
-  multiplayerMessage("");
-
-  navigate("race");
-}
-
-async function cleanupMultiplayer() {
-  ++multiplayerGeneration;
-
-  clearInterval(multiplayerRefreshTimer);
-  multiplayerRefreshTimer = null;
-
-  const channel = multiplayerChannel;
-  multiplayerChannel = null;
-
-  multiplayerRoom = null;
-  multiplayerPlayers = [];
-
-  multiplayerRefreshing = false;
-  multiplayerBusy = false;
-
-  storageSet(MULTIPLAYER_STORAGE_KEY, null);
-
-  if (channel && db) {
-    await db.removeChannel(channel);
-  }
-
-  showMultiplayerHome();
-}
-
-async function restoreMultiplayerRoom() {
-  if (!currentUser || !db) return;
-
-  const stored = storageGet(
-    MULTIPLAYER_STORAGE_KEY,
-    null
-  );
-
-  if (
-    !stored ||
-    stored.userId !== currentUser.id ||
-    !stored.roomId
-  ) {
-    return;
-  }
-
-  try {
-    const { data, error } = await db
-      .from("race_players")
-      .select("room_id")
-      .eq("room_id", stored.roomId)
-      .eq("user_id", currentUser.id)
-      .maybeSingle();
-
-    if (error) throw error;
-
-    if (!data) {
-      storageSet(MULTIPLAYER_STORAGE_KEY, null);
-      return;
-    }
-
-    await enterMultiplayerRoom(stored.roomId);
-  } catch (error) {
-    console.warn(
-      "Room restoration failed:",
-      error
-    );
-
-    storageSet(MULTIPLAYER_STORAGE_KEY, null);
-  }
-}
-
-async function createMultiplayerRoom() {
-  if (multiplayerRequiresLogin()) return;
-  if (multiplayerBusy) return;
-
-  setMultiplayerBusy(true);
-
-  multiplayerMessage("Creating your private room...");
-
-  try {
-    const { data, error } = await db.rpc(
-      "create_race_room"
-    );
-
-    if (error) throw error;
-
-    const room = Array.isArray(data)
-      ? data[0]
-      : data;
-
-    if (!room?.room_id) {
-      throw new Error(
-        "Supabase did not return a room ID."
-      );
-    }
-
-    await enterMultiplayerRoom(room.room_id);
-
-    showToast(
-      `Room ${room.code} created!`,
-      "success"
-    );
-  } catch (error) {
-    console.error(
-      "Create room failed:",
-      error
-    );
-
-    multiplayerMessage(error.message, "error");
-
-    showToast(error.message, "error");
-  } finally {
-    setMultiplayerBusy(false);
-  }
-}
-
-async function joinMultiplayerRoom(code) {
-  if (multiplayerRequiresLogin()) return;
-  if (multiplayerBusy) return;
-
-  const normalized =
-    String(code || "")
-      .trim()
-      .toUpperCase();
-
-  if (!/^[A-Z0-9]{6}$/.test(normalized)) {
-    multiplayerMessage(
-      "Enter a valid 6-character room code.",
-      "error"
-    );
-
-    return;
-  }
-
-  setMultiplayerBusy(true);
-
-  multiplayerMessage("Joining room...");
-
-  try {
-    const { data, error } = await db.rpc(
-      "join_race_room",
-      {
-        input_code: normalized
-      }
-    );
-
-    if (error) throw error;
-
-    if (!data) {
-      throw new Error(
-        "Supabase did not return a room ID."
-      );
-    }
-
-    await enterMultiplayerRoom(data);
-
-    showToast(
-      "Joined multiplayer room!",
-      "success"
-    );
-  } catch (error) {
-    multiplayerMessage(error.message, "error");
-
-    showToast(error.message, "error");
-  } finally {
-    setMultiplayerBusy(false);
-  }
-}
-
-async function leaveMultiplayerRoom() {
-  if (
-    !currentUser ||
-    !db ||
-    !multiplayerRoom ||
-    multiplayerBusy
-  ) {
-    return;
-  }
-
-  const roomId = multiplayerRoom.id;
-
-  setMultiplayerBusy(true);
-
-  try {
-    const { error } = await db.rpc(
-      "leave_race_room",
-      {
-        target_room_id: roomId
-      }
-    );
-
-    if (error) throw error;
-
-    await cleanupMultiplayer();
-
-    multiplayerMessage(
-      "You left the room.",
-      "success"
-    );
-
-    showToast(
-      "Left multiplayer room.",
-      "success"
-    );
-  } catch (error) {
-    multiplayerMessage(error.message, "error");
-    showToast(error.message, "error");
-  } finally {
-    setMultiplayerBusy(false);
-  }
-}
-
-async function toggleMultiplayerReady() {
-  if (
-    !currentUser ||
-    !db ||
-    !multiplayerRoom ||
-    multiplayerBusy
-  ) {
-    return;
-  }
-
-  const player = getMyMultiplayerPlayer();
-
-  if (!player) return;
-
-  setMultiplayerBusy(true);
-
-  try {
-    const { error } = await db.rpc(
-      "set_race_ready",
-      {
-        target_room_id: multiplayerRoom.id,
-        ready_state: !player.is_ready
-      }
-    );
-
-    if (error) throw error;
-
-    await refreshMultiplayerRoom();
-  } catch (error) {
-    multiplayerMessage(error.message, "error");
-
-    showToast(error.message, "error");
-  } finally {
-    setMultiplayerBusy(false);
-  }
-}
-
-/* ==========================================
-   MULTIPLAYER BUTTON EVENTS
-========================================== */
 
 $("botRaceTab").addEventListener("click", () => {
   $("botRaceView").hidden = false;
@@ -3904,141 +3225,52 @@ $("multiplayerRaceTab").addEventListener("click", () => {
   $("botRaceTab").classList.remove("active");
   $("multiplayerRaceTab").classList.add("active");
 
-  if (!multiplayerRoom) {
-    showMultiplayerHome();
-  } else {
-    renderMultiplayerLobby();
-  }
-
-  if (!currentUser) {
-    multiplayerMessage(
-      "Sign in to create or join a real multiplayer room."
-    );
-  } else {
-    multiplayerMessage("");
-  }
+  multiplayerNotice();
 });
 
 $("createRoomButton").addEventListener(
   "click",
-  createMultiplayerRoom
+  multiplayerNotice
 );
 
 $("joinRoomForm").addEventListener(
   "submit",
   event => {
     event.preventDefault();
-
-    joinMultiplayerRoom(
-      $("joinRoomCode").value
-    );
+    multiplayerNotice();
   }
+);
+
+$("chatInviteRaceButton").addEventListener(
+  "click",
+  multiplayerNotice
 );
 
 $("copyRoomCodeButton").addEventListener(
   "click",
-  async () => {
-    if (!multiplayerRoom) return;
-
-    const code = multiplayerRoom.room_code;
-
-    try {
-      await navigator.clipboard.writeText(code);
-
-      showToast(
-        "Room code copied!",
-        "success"
-      );
-    } catch (error) {
-      showToast(
-        "Room code: " + code,
-        "success"
-      );
-    }
-  }
+  multiplayerNotice
 );
 
 $("leaveRoomButton").addEventListener(
   "click",
-  leaveMultiplayerRoom
+  multiplayerNotice
 );
 
 $("toggleReadyButton").addEventListener(
   "click",
-  toggleMultiplayerReady
+  multiplayerNotice
 );
 
 $("startMultiplayerButton").addEventListener(
   "click",
-  () => {
-    showToast(
-      "Synchronized racing will be enabled in Phase 4.",
-      "error"
-    );
-  }
+  multiplayerNotice
 );
 
 $("raceAgainButton").addEventListener(
   "click",
-  () => {
-    showToast(
-      "Race again will be available with the live race engine.",
-      "error"
-    );
-  }
+  multiplayerNotice
 );
 
-/* ==========================================
-   FRIEND → RACE INVITE
-========================================== */
-
-$("chatInviteRaceButton").addEventListener(
-  "click",
-  async () => {
-    if (!selectedFriend || !currentUser) return;
-
-    if (!multiplayerRoom) {
-      showToast(
-        "Create a multiplayer room first.",
-        "error"
-      );
-
-      navigate("race");
-
-      $("multiplayerRaceTab").click();
-
-      return;
-    }
-
-    const code = multiplayerRoom.room_code;
-
-    const invitation =
-      `🏎 KEYSTRIKE RACE INVITE\n` +
-      `Join my private room!\n` +
-      `Room code: ${code}`;
-
-    try {
-      const { error } = await db
-        .from("messages")
-        .insert({
-          sender_id: currentUser.id,
-          receiver_id: selectedFriend.id,
-          content: invitation
-        });
-
-      if (error) throw error;
-
-      await loadChatMessages();
-
-      showToast(
-        "Race invitation sent!",
-        "success"
-      );
-    } catch (error) {
-      showToast(error.message, "error");
-    }
-  }
-);
 /* ==========================================
    SURVIVAL MODE
 ========================================== */
@@ -4267,8 +3499,7 @@ function getCurrentHistory() {
 
 function getPersonalBest() {
   if (currentUser) {
-    return currentProfile?.best_wpm ??
-      calculateSummary(cloudResults).best;
+    return calculateSummary(cloudResults).best;
   }
 
   return storageGet("ks_best", 0);
@@ -4283,20 +3514,9 @@ function updateStatsPage() {
   const history = getCurrentHistory();
   const summary = calculateSummary(history);
 
-  $("statsBest").textContent =
-    currentUser
-      ? currentProfile?.best_wpm ?? summary.best
-      : summary.best;
-
-  $("statsTests").textContent =
-    currentUser
-      ? currentProfile?.tests_completed ?? summary.tests
-      : summary.tests;
-
-  $("statsAverage").textContent =
-    currentUser
-      ? currentProfile?.average_wpm ?? summary.average
-      : summary.average;
+  $("statsBest").textContent = summary.best;
+  $("statsTests").textContent = summary.tests;
+  $("statsAverage").textContent = summary.average;
 
   const bestRace = storageGet("ks_best_race", 0);
 
@@ -4421,21 +3641,6 @@ function navigate(page) {
     }
   }
 
-  if (page === "race" && multiplayerRoom) {
-    /*
-      Preserve the active multiplayer tab
-      when returning to an existing room.
-    */
-
-    $("botRaceView").hidden = true;
-    $("multiplayerRaceView").hidden = false;
-
-    $("botRaceTab").classList.remove("active");
-    $("multiplayerRaceTab").classList.add("active");
-
-    refreshMultiplayerRoom();
-  }
-
   window.scrollTo({
     top: 0,
     behavior: "smooth"
@@ -4470,20 +3675,6 @@ window.addEventListener("resize", () => {
 });
 
 /* ==========================================
-   MULTIPLAYER CONNECTION RECOVERY
-========================================== */
-
-document.addEventListener("visibilitychange", () => {
-  if (
-    document.visibilityState === "visible" &&
-    multiplayerRoom &&
-    currentUser
-  ) {
-    refreshMultiplayerRoom();
-  }
-});
-
-/* ==========================================
    INITIALIZATION
 ========================================== */
 
@@ -4500,12 +3691,10 @@ function initialize() {
   renderAccount();
   renderSocialAuth();
 
-  showMultiplayerHome();
-
   initializeAuth();
 
   console.log(
-    "%c⚡ KEYSTRIKE V5 — MULTIPLAYER ROOMS READY",
+    "%c⚡ KEYSTRIKE V5 READY",
     "color:#65a8ff;font-size:22px;font-weight:bold"
   );
 }
