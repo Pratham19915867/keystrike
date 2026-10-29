@@ -1,17 +1,20 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
   <meta name="theme-color" content="#0b0e15">
 
-  <title>KEYSTRIKE V4 — Competitive Typing Arena</title>
+  <title>KEYSTRIKE V5 — Competitive Typing Arena</title>
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700;800&display=swap"
+    rel="stylesheet"
+  >
 
   <link rel="stylesheet" href="style.css">
 </head>
@@ -20,24 +23,39 @@
 
   <div class="background"></div>
 
-  <!-- NAVBAR -->
+  <!-- =====================================
+       NAVIGATION
+  ====================================== -->
 
   <header class="navbar">
+
     <div class="nav-container">
 
       <a href="#" class="logo" id="logo">
+
         <span class="logo-icon">⚡</span>
-        <span>KEY<span class="accent">STRIKE</span></span>
-        <small>V4</small>
+
+        <span>
+          KEY<span class="accent">STRIKE</span>
+        </span>
+
+        <small>V5</small>
+
       </a>
 
-      <nav class="nav-links">
+      <nav class="nav-links" aria-label="Main navigation">
+
         <button class="nav-btn active" data-page="type">
           ⌨ <span>TYPE</span>
         </button>
 
         <button class="nav-btn" data-page="race">
           🏎 <span>RACE</span>
+        </button>
+
+        <button class="nav-btn" data-page="social" id="socialNavButton">
+          👥 <span>SOCIAL</span>
+          <span class="nav-notification" id="socialNotification" hidden></span>
         </button>
 
         <button class="nav-btn" data-page="survival">
@@ -51,6 +69,7 @@
         <button class="nav-btn" data-page="stats">
           ◫ <span>STATS</span>
         </button>
+
       </nav>
 
       <div class="nav-actions">
@@ -67,31 +86,46 @@
 
           <span class="avatar" id="navAvatar">G</span>
 
-          <span class="profile-name" id="profileName">Guest</span>
+          <span class="profile-name" id="profileName">
+            Guest
+          </span>
 
         </button>
 
       </div>
 
     </div>
+
   </header>
 
   <main class="container">
 
-    <!-- TYPING PAGE -->
+    <!-- =====================================
+         TYPING PAGE
+    ====================================== -->
 
     <section class="page active" id="typePage">
 
       <div class="page-heading">
 
         <div>
-          <div class="eyebrow">THE ULTIMATE TYPING ARENA</div>
-          <h1>Test your <span>speed.</span></h1>
+
+          <div class="eyebrow">
+            THE ULTIMATE TYPING ARENA
+          </div>
+
+          <h1>
+            Test your <span>speed.</span>
+          </h1>
+
         </div>
 
         <div class="personal-best">
+
           <span>PERSONAL BEST</span>
+
           <strong id="personalBest">0 WPM</strong>
+
         </div>
 
       </div>
@@ -99,21 +133,43 @@
       <div class="settings-bar">
 
         <div class="segmented">
-          <button class="segment active" data-mode="words">Words</button>
-          <button class="segment" data-mode="quote">Quote</button>
-          <button class="segment" data-mode="code">Code</button>
+
+          <button class="segment active" data-mode="words">
+            Words
+          </button>
+
+          <button class="segment" data-mode="quote">
+            Quote
+          </button>
+
+          <button class="segment" data-mode="code">
+            Code
+          </button>
+
         </div>
 
         <div class="segmented">
+
           <button class="segment" data-time="15">15s</button>
+
           <button class="segment active" data-time="30">30s</button>
+
           <button class="segment" data-time="60">60s</button>
+
           <button class="segment" data-time="120">120s</button>
+
         </div>
 
         <div class="segmented">
-          <button class="segment active" data-difficulty="common">Common</button>
-          <button class="segment" data-difficulty="advanced">Advanced</button>
+
+          <button class="segment active" data-difficulty="common">
+            Common
+          </button>
+
+          <button class="segment" data-difficulty="advanced">
+            Advanced
+          </button>
+
         </div>
 
         <button class="option-btn" id="punctuationButton">
@@ -135,8 +191,11 @@
         <div class="arena-top">
 
           <div class="timer-block">
+
             <strong id="timer">30</strong>
+
             <span>SECONDS</span>
+
           </div>
 
           <div class="live-stats">
@@ -158,7 +217,9 @@
 
           </div>
 
-          <button class="quit-btn" id="quitButton">Reset</button>
+          <button class="quit-btn" id="quitButton">
+            Reset
+          </button>
 
         </div>
 
@@ -227,7 +288,9 @@
             </div>
 
             <div class="keyboard-row">
-              <span class="key space-key" data-key=" ">SPACE</span>
+              <span class="key space-key" data-key=" ">
+                SPACE
+              </span>
             </div>
 
           </div>
@@ -241,106 +304,768 @@
         </div>
 
         <div class="arena-bottom">
-          <span><kbd>tab</kbd> + <kbd>enter</kbd> restart</span>
-          <span><kbd>esc</kbd> reset</span>
+
+          <span>
+            <kbd>tab</kbd> + <kbd>enter</kbd> restart
+          </span>
+
+          <span>
+            <kbd>esc</kbd> reset
+          </span>
+
         </div>
 
       </div>
 
       <div class="below-arena">
-        <span>Practice. Improve. Dominate.</span>
-        <span id="sessionStatus">READY</span>
+
+        <span>
+          Practice. Improve. Dominate.
+        </span>
+
+        <span id="sessionStatus">
+          READY
+        </span>
+
       </div>
 
     </section>
 
-    <!-- BOT RACING -->
+    <!-- =====================================
+         RACING PAGE
+    ====================================== -->
 
     <section class="page" id="racePage">
 
       <div class="page-heading">
+
         <div>
-          <div class="eyebrow">COMPETITIVE MODE</div>
-          <h1>Typing <span>Race.</span></h1>
+
+          <div class="eyebrow">
+            COMPETITIVE MODE
+          </div>
+
+          <h1>
+            Typing <span>Race.</span>
+          </h1>
+
         </div>
+
       </div>
 
-      <div class="race-controls">
+      <div class="race-mode-selector">
 
-        <label>
-          BOT DIFFICULTY
+        <button
+          class="race-mode-btn active"
+          id="botRaceTab"
+          type="button"
+        >
+          🤖 BOT RACE
+        </button>
 
-          <select id="raceDifficulty">
-            <option value="easy">Easy</option>
-            <option value="medium" selected>Medium</option>
-            <option value="hard">Hard</option>
-            <option value="insane">Insane</option>
-          </select>
-
-        </label>
-
-        <button class="primary-btn" id="startRaceButton">
-          START RACE →
+        <button
+          class="race-mode-btn"
+          id="multiplayerRaceTab"
+          type="button"
+        >
+          🌐 MULTIPLAYER
         </button>
 
       </div>
 
-      <div class="race-arena">
+      <!-- EXISTING BOT RACING -->
 
-        <div class="race-header">
-          <span id="raceStatus">Waiting for race</span>
-          <span>VS 3 BOTS</span>
+      <div id="botRaceView">
+
+        <div class="race-controls">
+
+          <label>
+
+            BOT DIFFICULTY
+
+            <select id="raceDifficulty">
+              <option value="easy">Easy</option>
+              <option value="medium" selected>Medium</option>
+              <option value="hard">Hard</option>
+              <option value="insane">Insane</option>
+            </select>
+
+          </label>
+
+          <button class="primary-btn" id="startRaceButton">
+            START RACE →
+          </button>
+
         </div>
 
-        <div class="race-tracks" id="raceTracks"></div>
+        <div class="race-arena">
 
-        <div class="race-countdown" id="raceCountdown">3</div>
+          <div class="race-header">
+            <span id="raceStatus">Waiting for race</span>
+            <span>VS 3 BOTS</span>
+          </div>
+
+          <div class="race-tracks" id="raceTracks"></div>
+
+          <div class="race-countdown" id="raceCountdown">
+            3
+          </div>
+
+        </div>
+
+        <div class="race-typing">
+
+          <div class="race-info">
+            <span>WPM: <strong id="raceWpm">0</strong></span>
+            <span>PROGRESS: <strong id="raceProgress">0%</strong></span>
+          </div>
+
+          <div class="race-text" id="raceText">
+            Start a race to begin.
+          </div>
+
+          <input
+            id="raceInput"
+            placeholder="Type the race passage here..."
+            autocomplete="off"
+            spellcheck="false"
+            disabled
+          >
+
+        </div>
+
+        <div class="race-result" id="raceResult" hidden></div>
 
       </div>
 
-      <div class="race-typing">
+      <!-- MULTIPLAYER INTERFACE -->
 
-        <div class="race-info">
-          <span>WPM: <strong id="raceWpm">0</strong></span>
-          <span>PROGRESS: <strong id="raceProgress">0%</strong></span>
+      <div id="multiplayerRaceView" hidden>
+
+        <div class="multiplayer-intro">
+
+          <div>
+
+            <div class="eyebrow">
+              REAL PLAYERS. REAL COMPETITION.
+            </div>
+
+            <h2>
+              Race against the world.
+            </h2>
+
+            <p>
+              Create a private room or join your friends
+              for a live typing race.
+            </p>
+
+          </div>
+
+          <div class="multiplayer-live-badge">
+            <span class="live-dot"></span>
+            LIVE MULTIPLAYER
+          </div>
+
         </div>
 
-        <div class="race-text" id="raceText">
-          Start a race to begin.
+        <div class="multiplayer-actions" id="multiplayerHome">
+
+          <div class="multiplayer-action-card">
+
+            <div class="multiplayer-action-icon">
+              🏁
+            </div>
+
+            <h3>Create Room</h3>
+
+            <p>
+              Host a private typing race and invite your friends.
+            </p>
+
+            <button class="primary-btn" id="createRoomButton">
+              CREATE PRIVATE ROOM →
+            </button>
+
+          </div>
+
+          <div class="multiplayer-action-card">
+
+            <div class="multiplayer-action-icon">
+              🔑
+            </div>
+
+            <h3>Join Room</h3>
+
+            <p>
+              Enter a room code to compete against other players.
+            </p>
+
+            <form id="joinRoomForm">
+
+              <input
+                id="joinRoomCode"
+                class="auth-input"
+                placeholder="ENTER ROOM CODE"
+                maxlength="12"
+                autocomplete="off"
+                aria-label="Room code"
+              >
+
+              <button class="primary-btn" type="submit">
+                JOIN ROOM →
+              </button>
+
+            </form>
+
+          </div>
+
         </div>
 
-        <input
-          id="raceInput"
-          placeholder="Type the race passage here..."
-          autocomplete="off"
-          spellcheck="false"
-          disabled
-        >
+        <p class="multiplayer-message" id="multiplayerMessage" role="status"></p>
+
+        <!-- MULTIPLAYER LOBBY -->
+
+        <div class="multiplayer-lobby" id="multiplayerLobby" hidden>
+
+          <div class="lobby-header">
+
+            <div>
+
+              <div class="eyebrow">
+                PRIVATE RACE LOBBY
+              </div>
+
+              <h2>
+                Room <span id="lobbyRoomCode">------</span>
+              </h2>
+
+            </div>
+
+            <div class="lobby-header-actions">
+
+              <button class="secondary-btn" id="copyRoomCodeButton">
+                📋 COPY CODE
+              </button>
+
+              <button class="quit-btn" id="leaveRoomButton">
+                LEAVE
+              </button>
+
+            </div>
+
+          </div>
+
+          <div class="lobby-status-bar">
+
+            <span id="lobbyStatus">
+              Waiting for players...
+            </span>
+
+            <span id="lobbyPlayerCount">
+              0 / 4 PLAYERS
+            </span>
+
+          </div>
+
+          <div class="lobby-players" id="lobbyPlayers"></div>
+
+          <div class="lobby-bottom">
+
+            <button class="secondary-btn" id="toggleReadyButton">
+              I'M READY
+            </button>
+
+            <button
+              class="primary-btn"
+              id="startMultiplayerButton"
+              disabled
+            >
+              START RACE →
+            </button>
+
+          </div>
+
+        </div>
+
+        <!-- LIVE MULTIPLAYER RACE -->
+
+        <div class="multiplayer-race" id="multiplayerRace" hidden>
+
+          <div class="multiplayer-race-top">
+
+            <span id="multiplayerRaceStatus">
+              Preparing race...
+            </span>
+
+            <span id="multiplayerRaceTimer">
+              0s
+            </span>
+
+          </div>
+
+          <div class="multiplayer-tracks" id="multiplayerTracks"></div>
+
+          <div class="multiplayer-countdown" id="multiplayerCountdown" hidden>
+            3
+          </div>
+
+          <div class="multiplayer-passage" id="multiplayerPassage"></div>
+
+          <input
+            class="game-input"
+            id="multiplayerInput"
+            placeholder="Wait for the race to begin..."
+            autocomplete="off"
+            autocapitalize="off"
+            spellcheck="false"
+            disabled
+          >
+
+          <div class="multiplayer-live-stats">
+
+            <span>
+              WPM: <strong id="multiplayerWpm">0</strong>
+            </span>
+
+            <span>
+              PROGRESS: <strong id="multiplayerProgress">0%</strong>
+            </span>
+
+          </div>
+
+        </div>
+
+        <!-- MULTIPLAYER RESULTS -->
+
+        <div class="multiplayer-results" id="multiplayerResults" hidden>
+
+          <div class="eyebrow">
+            RACE COMPLETE
+          </div>
+
+          <h2>
+            Final <span>Leaderboard.</span>
+          </h2>
+
+          <div id="multiplayerLeaderboard"></div>
+
+          <button class="primary-btn" id="raceAgainButton">
+            RACE AGAIN →
+          </button>
+
+        </div>
 
       </div>
-
-      <div class="race-result" id="raceResult" hidden></div>
 
     </section>
 
-    <!-- SURVIVAL -->
+    <!-- =====================================
+         SOCIAL HUB
+    ====================================== -->
+
+    <section class="page" id="socialPage">
+
+      <div class="page-heading social-heading">
+
+        <div>
+
+          <div class="eyebrow">
+            KEYSTRIKE COMMUNITY
+          </div>
+
+          <h1>
+            Social <span>Hub.</span>
+          </h1>
+
+          <p class="social-subtitle">
+            Find players. Make friends. Challenge rivals.
+          </p>
+
+        </div>
+
+        <div class="social-heading-actions">
+
+          <span class="social-online-count" id="socialOnlineCount">
+            🟢 CONNECTING
+          </span>
+
+          <button class="secondary-btn" id="refreshSocialButton">
+            ↻ REFRESH
+          </button>
+
+        </div>
+
+      </div>
+
+      <!-- SIGNED OUT STATE -->
+
+      <div class="social-login-required" id="socialLoginRequired">
+
+        <div class="social-login-icon">
+          👥
+        </div>
+
+        <h2>
+          Your arena awaits.
+        </h2>
+
+        <p>
+          Sign in to find players, send friend requests,
+          chat privately and compete in multiplayer races.
+        </p>
+
+        <button class="primary-btn" id="socialLoginButton">
+          SIGN IN TO KEYSTRIKE →
+        </button>
+
+      </div>
+
+      <!-- SIGNED IN SOCIAL HUB -->
+
+      <div class="social-dashboard" id="socialDashboard" hidden>
+
+        <!-- LEFT PANEL -->
+
+        <div class="social-sidebar">
+
+          <div class="social-panel">
+
+            <div class="social-panel-header">
+
+              <div>
+
+                <div class="eyebrow">
+                  PLAYER NETWORK
+                </div>
+
+                <h3>
+                  Your Friends
+                  <span id="friendsCount">0</span>
+                </h3>
+
+              </div>
+
+              <button
+                class="social-icon-button"
+                id="refreshFriendsButton"
+                title="Refresh friends"
+              >
+                ↻
+              </button>
+
+            </div>
+
+            <!-- PLAYER SEARCH -->
+
+            <div class="player-search">
+
+              <form id="playerSearchForm">
+
+                <div class="search-input-wrapper">
+
+                  <span>⌕</span>
+
+                  <input
+                    id="playerSearchInput"
+                    placeholder="Search username..."
+                    maxlength="20"
+                    autocomplete="off"
+                    aria-label="Search players"
+                  >
+
+                </div>
+
+                <button
+                  class="primary-btn"
+                  type="submit"
+                >
+                  SEARCH
+                </button>
+
+              </form>
+
+            </div>
+
+            <!-- SEARCH RESULTS -->
+
+            <div class="search-results" id="searchResults" hidden>
+
+              <div class="social-section-title">
+                SEARCH RESULTS
+              </div>
+
+              <div id="playerSearchResults"></div>
+
+            </div>
+
+            <!-- FRIEND REQUESTS -->
+
+            <div class="friend-requests-section">
+
+              <div class="social-section-header">
+
+                <span class="social-section-title">
+                  FRIEND REQUESTS
+                </span>
+
+                <span class="request-count" id="friendRequestCount">
+                  0
+                </span>
+
+              </div>
+
+              <div id="incomingFriendRequests"></div>
+
+            </div>
+
+            <!-- OUTGOING REQUESTS -->
+
+            <div class="outgoing-requests-section" id="outgoingRequestsSection" hidden>
+
+              <div class="social-section-title">
+                SENT REQUESTS
+              </div>
+
+              <div id="outgoingFriendRequests"></div>
+
+            </div>
+
+            <!-- FRIENDS LIST -->
+
+            <div class="friends-list-section">
+
+              <div class="social-section-header">
+
+                <span class="social-section-title">
+                  FRIENDS LIST
+                </span>
+
+                <span class="friends-online-label" id="friendsOnlineCount">
+                  0 ONLINE
+                </span>
+
+              </div>
+
+              <div class="friends-list" id="friendsList">
+
+                <div class="social-empty-state">
+                  No friends yet. Search for players to connect!
+                </div>
+
+              </div>
+
+            </div>
+
+          </div>
+
+        </div>
+
+        <!-- RIGHT PANEL -->
+
+        <div class="social-chat-panel">
+
+          <!-- CHAT EMPTY STATE -->
+
+          <div class="chat-empty-state" id="chatEmptyState">
+
+            <div class="chat-empty-graphic">
+              💬
+            </div>
+
+            <h3>
+              Start a conversation.
+            </h3>
+
+            <p>
+              Select a friend to send messages,
+              share your typing achievements,
+              or challenge them to a race.
+            </p>
+
+            <div class="chat-empty-features">
+
+              <span>⚡ REAL-TIME CHAT</span>
+
+              <span>🔒 PRIVATE MESSAGES</span>
+
+              <span>🏎 RACE INVITES</span>
+
+            </div>
+
+          </div>
+
+          <!-- ACTIVE CONVERSATION -->
+
+          <div class="chat-conversation" id="chatConversation" hidden>
+
+            <div class="chat-header">
+
+              <div class="chat-header-user">
+
+                <div class="chat-avatar" id="chatFriendAvatar">
+                  K
+                </div>
+
+                <div class="chat-header-info">
+
+                  <strong id="chatFriendName">
+                    Player
+                  </strong>
+
+                  <span id="chatFriendStatus">
+                    Offline
+                  </span>
+
+                </div>
+
+              </div>
+
+              <div class="chat-header-actions">
+
+                <button
+                  class="social-icon-button"
+                  id="chatInviteRaceButton"
+                  title="Invite to race"
+                >
+                  🏎
+                </button>
+
+                <button
+                  class="social-icon-button"
+                  id="clearChatButton"
+                  title="Clear conversation"
+                >
+                  🗑
+                </button>
+
+                <button
+                  class="social-icon-button"
+                  id="closeChatButton"
+                  title="Close conversation"
+                >
+                  ✕
+                </button>
+
+              </div>
+
+            </div>
+
+            <div class="chat-friend-stats">
+
+              <span>
+                ⚡ BEST:
+                <strong id="chatFriendBest">0 WPM</strong>
+              </span>
+
+              <span>
+                📊 TESTS:
+                <strong id="chatFriendTests">0</strong>
+              </span>
+
+            </div>
+
+            <div
+              class="chat-messages"
+              id="chatMessages"
+              role="log"
+              aria-label="Private messages"
+              aria-live="polite"
+              aria-relevant="additions"
+            ></div>
+
+            <div class="chat-typing-indicator" id="chatTypingIndicator" hidden>
+              Player is typing...
+            </div>
+
+            <div class="chat-bottom">
+
+              <div class="quick-messages">
+
+                <button type="button" data-quick-message="Hey!">
+                  Hey! 👋
+                </button>
+
+                <button type="button" data-quick-message="Ready to race?">
+                  🏎 Race?
+                </button>
+
+                <button type="button" data-quick-message="GG!">
+                  GG! 🔥
+                </button>
+
+                <button type="button" data-quick-message="Nice speed!">
+                  ⚡ Nice!
+                </button>
+
+                <button type="button" data-quick-message="One more race?">
+                  Again?
+                </button>
+
+              </div>
+
+              <form class="chat-input-form" id="chatMessageForm">
+
+                <input
+                  id="chatMessageInput"
+                  placeholder="Type a message..."
+                  maxlength="2000"
+                  autocomplete="off"
+                  aria-label="Message"
+                  required
+                >
+
+                <button
+                  class="primary-btn"
+                  type="submit"
+                  id="sendChatButton"
+                >
+                  SEND ➤
+                </button>
+
+              </form>
+
+              <div class="chat-footer-note">
+                🔒 PRIVATE CONVERSATION
+              </div>
+
+            </div>
+
+          </div>
+
+        </div>
+
+      </div>
+
+      <p class="social-status-message" id="socialStatusMessage" role="status"></p>
+
+    </section>
+
+    <!-- =====================================
+         SURVIVAL
+    ====================================== -->
 
     <section class="page" id="survivalPage">
 
       <div class="page-heading">
+
         <div>
           <div class="eyebrow">ENDLESS CHALLENGE</div>
           <h1>Survival <span>Mode.</span></h1>
         </div>
+
       </div>
 
       <div class="game-card">
 
         <div class="game-top">
 
-          <span>HEALTH: <strong id="survivalHealth">100</strong></span>
+          <span>
+            HEALTH: <strong id="survivalHealth">100</strong>
+          </span>
 
-          <span>SCORE: <strong id="survivalScore">0</strong></span>
+          <span>
+            SCORE: <strong id="survivalScore">0</strong>
+          </span>
 
         </div>
 
@@ -348,7 +1073,9 @@
           <div id="healthFill"></div>
         </div>
 
-        <div class="game-word" id="survivalWord">READY?</div>
+        <div class="game-word" id="survivalWord">
+          READY?
+        </div>
 
         <input
           class="game-input"
@@ -371,25 +1098,38 @@
 
     </section>
 
-    <!-- SPEED RUSH -->
+    <!-- =====================================
+         SPEED RUSH
+    ====================================== -->
 
     <section class="page" id="rushPage">
 
       <div class="page-heading">
+
         <div>
           <div class="eyebrow">60 SECOND CHALLENGE</div>
           <h1>Speed <span>Rush.</span></h1>
         </div>
+
       </div>
 
       <div class="game-card">
 
         <div class="game-top">
-          <span>TIME: <strong id="rushTimer">60</strong></span>
-          <span>SCORE: <strong id="rushScore">0</strong></span>
+
+          <span>
+            TIME: <strong id="rushTimer">60</strong>
+          </span>
+
+          <span>
+            SCORE: <strong id="rushScore">0</strong>
+          </span>
+
         </div>
 
-        <div class="game-word" id="rushWord">READY?</div>
+        <div class="game-word" id="rushWord">
+          READY?
+        </div>
 
         <input
           class="game-input"
@@ -412,15 +1152,19 @@
 
     </section>
 
-    <!-- STATISTICS -->
+    <!-- =====================================
+         STATISTICS
+    ====================================== -->
 
     <section class="page" id="statsPage">
 
       <div class="page-heading">
+
         <div>
           <div class="eyebrow">YOUR PROGRESS</div>
           <h1>Typing <span>Statistics.</span></h1>
         </div>
+
       </div>
 
       <p class="stats-source" id="statsSource">
@@ -467,7 +1211,9 @@
 
   </main>
 
-  <!-- SETTINGS -->
+  <!-- =====================================
+       SETTINGS
+  ====================================== -->
 
   <div class="settings-overlay" id="settingsOverlay"></div>
 
@@ -480,7 +1226,9 @@
         <h2>Settings</h2>
       </div>
 
-      <button class="close-settings" id="closeSettings">✕</button>
+      <button class="close-settings" id="closeSettings">
+        ✕
+      </button>
 
     </div>
 
@@ -491,10 +1239,23 @@
         <h3>THEME</h3>
 
         <div class="theme-options">
-          <button class="theme-choice active" data-theme-choice="cyber">Cyber</button>
-          <button class="theme-choice" data-theme-choice="ocean">Ocean</button>
-          <button class="theme-choice" data-theme-choice="inferno">Inferno</button>
-          <button class="theme-choice" data-theme-choice="matrix">Matrix</button>
+
+          <button class="theme-choice active" data-theme-choice="cyber">
+            Cyber
+          </button>
+
+          <button class="theme-choice" data-theme-choice="ocean">
+            Ocean
+          </button>
+
+          <button class="theme-choice" data-theme-choice="inferno">
+            Inferno
+          </button>
+
+          <button class="theme-choice" data-theme-choice="matrix">
+            Matrix
+          </button>
+
         </div>
 
       </div>
@@ -504,8 +1265,19 @@
         <h3>TYPING</h3>
 
         <div class="setting-item">
-          <label>Font size: <span id="fontSizeValue">29</span>px</label>
-          <input type="range" id="fontSizeSetting" min="17" max="36" value="29">
+
+          <label>
+            Font size: <span id="fontSizeValue">29</span>px
+          </label>
+
+          <input
+            type="range"
+            id="fontSizeSetting"
+            min="17"
+            max="36"
+            value="29"
+          >
+
         </div>
 
         <div class="setting-item">
@@ -555,6 +1327,7 @@
         </div>
 
         <div class="setting-item">
+
           <label>Sound style</label>
 
           <select id="soundStyle">
@@ -566,8 +1339,19 @@
         </div>
 
         <div class="setting-item">
-          <label>Volume: <span id="volumeValue">35</span>%</label>
-          <input type="range" id="volumeSetting" min="0" max="100" value="35">
+
+          <label>
+            Volume: <span id="volumeValue">35</span>%
+          </label>
+
+          <input
+            type="range"
+            id="volumeSetting"
+            min="0"
+            max="100"
+            value="35"
+          >
+
         </div>
 
       </div>
@@ -580,7 +1364,9 @@
 
   </aside>
 
-  <!-- RESULTS MODAL -->
+  <!-- =====================================
+       RESULTS MODAL
+  ====================================== -->
 
   <div class="modal-overlay" id="resultsModal">
 
@@ -588,7 +1374,9 @@
 
       <div class="eyebrow">TEST COMPLETE</div>
 
-      <h2>Your <span>Results.</span></h2>
+      <h2>
+        Your <span>Results.</span>
+      </h2>
 
       <div class="result-main">
 
@@ -635,7 +1423,9 @@
 
   </div>
 
-  <!-- ACCOUNT MODAL -->
+  <!-- =====================================
+       ACCOUNT MODAL
+  ====================================== -->
 
   <div class="modal-overlay" id="accountModal">
 
@@ -644,11 +1434,20 @@
       <div class="account-header">
 
         <div>
-          <div class="eyebrow">KEYSTRIKE ACCOUNT</div>
-          <h2 id="accountTitle">Welcome back.</h2>
+
+          <div class="eyebrow">
+            KEYSTRIKE ACCOUNT
+          </div>
+
+          <h2 id="accountTitle">
+            Welcome back.
+          </h2>
+
         </div>
 
-        <button class="close-settings" id="closeAccount">✕</button>
+        <button class="close-settings" id="closeAccount">
+          ✕
+        </button>
 
       </div>
 
@@ -657,11 +1456,16 @@
       <div id="loggedOutView">
 
         <button class="google-btn" id="googleLoginButton">
+
           <span class="google-mark">G</span>
+
           Continue with Google
+
         </button>
 
-        <div class="auth-divider">OR CONTINUE WITH EMAIL</div>
+        <div class="auth-divider">
+          OR CONTINUE WITH EMAIL
+        </div>
 
         <form id="emailAuthForm">
 
@@ -684,7 +1488,11 @@
             required
           >
 
-          <button class="primary-btn auth-submit" type="submit" id="emailAuthButton">
+          <button
+            class="primary-btn auth-submit"
+            type="submit"
+            id="emailAuthButton"
+          >
             LOG IN
           </button>
 
@@ -692,9 +1500,13 @@
 
         <div class="auth-links">
 
-          <button id="switchAuthMode">Create an account</button>
+          <button id="switchAuthMode">
+            Create an account
+          </button>
 
-          <button id="forgotPasswordButton">Forgot password?</button>
+          <button id="forgotPasswordButton">
+            Forgot password?
+          </button>
 
         </div>
 
@@ -706,11 +1518,20 @@
 
         <div class="account-profile">
 
-          <div class="account-avatar" id="accountAvatar">K</div>
+          <div class="account-avatar" id="accountAvatar">
+            K
+          </div>
 
           <div>
-            <strong id="accountDisplayName">Player</strong>
-            <small id="accountEmail">email@example.com</small>
+
+            <strong id="accountDisplayName">
+              Player
+            </strong>
+
+            <small id="accountEmail">
+              email@example.com
+            </small>
+
           </div>
 
         </div>
@@ -724,9 +1545,13 @@
           id="usernameInput"
           maxlength="20"
           placeholder="Choose username"
+          autocomplete="off"
         >
 
-        <button class="primary-btn auth-submit" id="saveUsernameButton">
+        <button
+          class="primary-btn auth-submit"
+          id="saveUsernameButton"
+        >
           SAVE USERNAME
         </button>
 
@@ -754,19 +1579,52 @@
 
       </div>
 
-      <p class="auth-message" id="authMessage" role="status"></p>
+      <p
+        class="auth-message"
+        id="authMessage"
+        role="status"
+      ></p>
 
     </div>
 
   </div>
 
+  <!-- =====================================
+       GLOBAL NOTIFICATION
+  ====================================== -->
+
+  <div
+    class="ks-toast"
+    id="ksToast"
+    role="status"
+    aria-live="polite"
+    hidden
+  ></div>
+
+  <!-- =====================================
+       FOOTER
+  ====================================== -->
+
   <footer class="footer">
-    <span>© 2026 KEYSTRIKE</span>
-    <span>BUILT FOR SPEED ⚡</span>
+
+    <span>
+      © 2026 KEYSTRIKE V5
+    </span>
+
+    <span>
+      BUILT FOR SPEED ⚡
+    </span>
+
   </footer>
 
+  <!-- SUPABASE SDK -->
+
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <!-- KEYSTRIKE JAVASCRIPT -->
+
   <script src="script.js"></script>
 
 </body>
+
 </html>
