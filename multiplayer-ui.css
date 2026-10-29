@@ -1,0 +1,518 @@
+/* ==========================================
+   KEYSTRIKE V5
+   MULTIPLAYER ARENA UI
+========================================== */
+
+.ks-mp-settings-panel {
+  margin-bottom: 25px;
+  padding: 28px;
+
+  background:
+    radial-gradient(
+      ellipse at top right,
+      rgba(101, 168, 255, .10),
+      transparent 55%
+    ),
+    var(--surface);
+
+  border: 1px solid var(--border);
+  border-radius: 18px;
+
+  box-shadow: 0 15px 45px rgba(0, 0, 0, .15);
+}
+
+.ks-mp-settings-heading {
+  margin-bottom: 28px;
+}
+
+.ks-mp-settings-heading h2 {
+  margin-top: 9px;
+
+  font-size: 25px;
+  font-weight: 900;
+
+  letter-spacing: -.6px;
+}
+
+.ks-mp-settings-heading p {
+  margin-top: 9px;
+
+  color: var(--muted);
+
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.ks-mp-setting-section {
+  padding: 20px 0;
+
+  border-top: 1px solid var(--border);
+}
+
+.ks-mp-setting-title {
+  margin-bottom: 15px;
+
+  color: var(--accent);
+
+  font-size: 11px;
+  font-weight: 900;
+
+  letter-spacing: 1px;
+}
+
+/* ==========================================
+   GAME MODE CARDS
+========================================== */
+
+.ks-mp-mode-grid {
+  display: grid;
+
+  grid-template-columns:
+    repeat(5, minmax(0, 1fr));
+
+  gap: 10px;
+}
+
+.ks-mp-mode-card {
+  min-height: 135px;
+
+  padding: 18px 12px;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+
+  gap: 9px;
+
+  background: #0e121a;
+  color: var(--text);
+
+  border: 1px solid var(--border);
+  border-radius: 13px;
+
+  text-align: center;
+
+  transition: .2s ease;
+}
+
+.ks-mp-mode-card:hover {
+  transform: translateY(-3px);
+
+  border-color: var(--accent);
+
+  background: var(--surface2);
+}
+
+.ks-mp-mode-card.active {
+  border-color: var(--accent);
+
+  background:
+    linear-gradient(
+      135deg,
+      rgba(101, 168, 255, .12),
+      rgba(168, 121, 255, .08)
+    );
+
+  box-shadow:
+    0 0 20px rgba(101, 168, 255, .08);
+}
+
+.ks-mp-mode-icon {
+  font-size: 29px;
+}
+
+.ks-mp-mode-card strong {
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.ks-mp-mode-card small {
+  color: var(--muted);
+
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+/* ==========================================
+   OPTION BUTTONS
+========================================== */
+
+.ks-mp-choice-group {
+  display: flex;
+  flex-wrap: wrap;
+
+  gap: 8px;
+}
+
+.ks-mp-choice {
+  padding: 11px 17px;
+
+  background: #0d1118;
+  color: var(--muted);
+
+  border: 1px solid var(--border);
+  border-radius: 9px;
+
+  font-size: 11px;
+  font-weight: 800;
+
+  transition: .2s ease;
+}
+
+.ks-mp-choice:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.ks-mp-choice.active {
+  color: #08101d;
+  background: var(--accent);
+
+  border-color: var(--accent);
+
+  box-shadow:
+    0 0 15px rgba(101, 168, 255, .12);
+}
+
+/* ==========================================
+   CUSTOM PASSAGE
+========================================== */
+
+.ks-mp-custom-wrapper {
+  margin-top: 15px;
+}
+
+.ks-mp-custom-input {
+  width: 100%;
+  min-height: 120px;
+
+  padding: 16px;
+
+  resize: vertical;
+
+  background: #0d1118;
+  color: var(--text);
+
+  border: 1px solid var(--border);
+  border-radius: 11px;
+
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.8;
+}
+
+.ks-mp-custom-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* ==========================================
+   ROOM SETTINGS SUMMARY
+========================================== */
+
+.ks-mp-settings-summary {
+  margin-top: 20px;
+
+  padding: 16px;
+
+  background:
+    linear-gradient(
+      90deg,
+      rgba(101, 168, 255, .10),
+      rgba(168, 121, 255, .06)
+    );
+
+  border: 1px solid var(--border);
+  border-radius: 11px;
+
+  color: var(--accent);
+
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 800;
+
+  text-align: center;
+
+  line-height: 1.8;
+}
+
+/* ==========================================
+   MULTIPLAYER RACE VISUAL IMPROVEMENTS
+========================================== */
+
+.multiplayer-race {
+  background:
+    radial-gradient(
+      ellipse at 90% 0%,
+      rgba(101, 168, 255, .07),
+      transparent 50%
+    ),
+    var(--surface);
+}
+
+.multiplayer-track {
+  padding: 8px 0;
+}
+
+.multiplayer-track-line {
+  height: 46px;
+
+  background:
+    repeating-linear-gradient(
+      90deg,
+      transparent 0,
+      transparent 39px,
+      rgba(255, 255, 255, .025) 40px
+    ),
+    var(--surface2);
+
+  border-radius: 10px;
+}
+
+.multiplayer-track-line::after {
+  content: "🏁";
+
+  position: absolute;
+  right: 7px;
+  top: 10px;
+
+  font-size: 21px;
+  opacity: .7;
+}
+
+.multiplayer-track-fill {
+  background:
+    linear-gradient(
+      90deg,
+      rgba(101, 168, 255, .13),
+      rgba(168, 121, 255, .30)
+    );
+}
+
+.multiplayer-car {
+  top: 8px;
+
+  font-size: 25px;
+
+  filter:
+    drop-shadow(
+      0 0 6px rgba(101, 168, 255, .35)
+    );
+
+  transition:
+    transform .25s ease-out;
+}
+
+.multiplayer-racer-name {
+  font-weight: 900;
+}
+
+.multiplayer-track-progress {
+  font-size: 10px;
+}
+
+/* ==========================================
+   COUNTDOWN
+========================================== */
+
+.multiplayer-countdown {
+  background:
+    rgba(5, 8, 14, .92);
+
+  text-shadow:
+    0 0 20px var(--accent);
+
+  animation:
+    ksCountdownPulse .8s ease-in-out infinite alternate;
+}
+
+@keyframes ksCountdownPulse {
+  from {
+    text-shadow:
+      0 0 10px var(--accent);
+
+    letter-spacing: 0;
+  }
+
+  to {
+    text-shadow:
+      0 0 45px var(--accent);
+
+    letter-spacing: 8px;
+  }
+}
+
+/* ==========================================
+   TYPING PASSAGE
+========================================== */
+
+.multiplayer-passage {
+  background: #0a0e15;
+
+  border-color: #344052;
+
+  box-shadow:
+    inset 0 0 25px rgba(0, 0, 0, .2);
+}
+
+.multiplayer-passage .correct {
+  color: var(--correct);
+
+  text-shadow:
+    0 0 5px rgba(115, 224, 163, .18);
+}
+
+.multiplayer-passage .incorrect {
+  color: var(--incorrect);
+
+  background:
+    rgba(255, 96, 122, .1);
+}
+
+#multiplayerInput {
+  background: var(--surface2);
+
+  border: 1px solid var(--border);
+
+  transition: .2s;
+}
+
+#multiplayerInput:focus {
+  border-color: var(--accent);
+
+  box-shadow:
+    0 0 0 3px rgba(101, 168, 255, .08);
+}
+
+/* ==========================================
+   LEADERBOARD
+========================================== */
+
+.multiplayer-results {
+  background:
+    radial-gradient(
+      ellipse at top,
+      rgba(255, 209, 102, .07),
+      transparent 55%
+    ),
+    var(--surface);
+}
+
+.multiplayer-leaderboard-item {
+  transition: .2s;
+}
+
+.multiplayer-leaderboard-item:hover {
+  transform: translateX(4px);
+
+  border-color: var(--accent);
+}
+
+.multiplayer-leaderboard-item:first-child {
+  background:
+    linear-gradient(
+      90deg,
+      rgba(255, 209, 102, .12),
+      rgba(255, 209, 102, .02)
+    );
+
+  border-color: #ffd166;
+}
+
+.multiplayer-leaderboard-item:first-child::before {
+  content: "🏆";
+
+  position: absolute;
+
+  right: 15px;
+
+  opacity: .15;
+
+  font-size: 36px;
+}
+
+.multiplayer-leaderboard-item {
+  position: relative;
+}
+
+/* ==========================================
+   RESPONSIVE TABLET
+========================================== */
+
+@media (max-width: 1000px) {
+
+  .ks-mp-mode-grid {
+    grid-template-columns:
+      repeat(3, minmax(0, 1fr));
+  }
+
+}
+
+/* ==========================================
+   RESPONSIVE MOBILE
+========================================== */
+
+@media (max-width: 650px) {
+
+  .ks-mp-settings-panel {
+    padding: 18px;
+  }
+
+  .ks-mp-settings-heading h2 {
+    font-size: 21px;
+  }
+
+  .ks-mp-mode-grid {
+    grid-template-columns:
+      repeat(2, minmax(0, 1fr));
+  }
+
+  .ks-mp-mode-card {
+    min-height: 115px;
+
+    padding: 13px 8px;
+  }
+
+  .ks-mp-mode-icon {
+    font-size: 24px;
+  }
+
+  .ks-mp-choice {
+    padding: 10px 12px;
+    font-size: 10px;
+  }
+
+  .ks-mp-settings-summary {
+    font-size: 9px;
+  }
+
+  .multiplayer-track-line {
+    height: 39px;
+  }
+
+  .multiplayer-car {
+    font-size: 20px;
+    top: 7px;
+  }
+
+}
+
+/* ==========================================
+   REDUCED MOTION
+========================================== */
+
+@media (prefers-reduced-motion: reduce) {
+
+  .ks-mp-mode-card,
+  .ks-mp-choice,
+  .multiplayer-car,
+  .multiplayer-leaderboard-item {
+    transition: none;
+  }
+
+  .multiplayer-countdown {
+    animation: none;
+  }
+
+}
