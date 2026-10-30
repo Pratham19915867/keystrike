@@ -1,37 +1,43 @@
 "use strict";
 
-/* =====================================================
-   KEYSTRIKE V5
-   MULTIPLAYER PHASE 4 — UPDATED ENGINE
+/*
+  KEYSTRIKE V5
+  MULTIPLAYER ENGINE — TIMER & SYNC FIX
 
-   Features:
-   - Host-only race start
-   - Room settings
-   - Synchronized countdown
-   - Shared passage
-   - Live progress and WPM
-   - Animated tracks
-   - Race completion
-   - Leaderboard
-   - Winner announcement
-   - Rematch
-   - Realtime synchronization
-===================================================== */
+  - Configured race time limits
+  - Live scoreboard
+  - Reliable room refresh
+  - Countdown
+  - Animated vehicles
+  - Automatic completion checks
+  - Timed race rankings
+  - Room leave synchronization
+  - Host-only start / rematch
+
+  Requires:
+  script.js loaded before this file.
+*/
 
 (() => {
 
 const el = id => document.getElementById(id);
 
 if (typeof db === "undefined" || !db) {
-  console.error("KEYSTRIKE: Supabase unavailable.");
+  console.error("KEYSTRIKE: Supabase unavailable");
   return;
 }
 
 const client = db;
 
-const RACE_TIMEOUT = 180;
-const PROGRESS_INTERVAL = 450;
-const REFRESH_INTERVAL = 2500;
+const PROGRESS_INTERVAL = 350;
+const REFRESH_INTERVAL = 1500;
+
+const input = el("multiplayerInput");
+
+if (!input) {
+  console.error("Multiplayer input not found");
+  return;
+}
 
 let activeRound = null;
 
@@ -53,25 +59,61 @@ let lastSubmittedLength = 0;
 let resultsLoadedFor = null;
 
 let engineGeneration = 0;
+
 let enteringRoom = false;
 let startingRace = false;
 let resettingRoom = false;
+let leavingRoom = false;
 
-const input = el("multiplayerInput");
+let loadingRound = false;
+let loadingRoundId = null;
 
-/* =====================================================
-   UTILITIES
-===================================================== */
+let refreshQueued = false;
+let refreshing = false;
 
-function notify(text, type = "") {
-  mpMessage(text, type);
+let checkingCompletion = false;
+
+let lastErrorMessage = "";
+let lastErrorTime = 0;
+
+/* ======================================
+   HELPERS
+====================================== */
+
+function notify(message, type = "") {
+  mpMessage(message, type);
+}
+
+function reportError(error, prefix = "") {
+  const message = prefix + (error?.message || String(error));
+
+  console.error(message);
+
+  const now = Date.now();
+
+  if (
+    message !== lastErrorMessage ||
+    now - lastErrorTime > 5000
+  ) {
+    lastErrorMessage = message;
+    lastErrorTime = now;
+
+    notify(message, "error");
+  }
 }
 
 function showView(view) {
-  el("multiplayerHome").hidden = view !== "home";
-  el("multiplayerLobby").hidden = view !== "lobby";
-  el("multiplayerRace").hidden = view !== "race";
-  el("multiplayerResults").hidden = view !== "results";
+  const views = {
+    home: "multiplayerHome",
+    lobby: "multiplayerLobby",
+    race: "multiplayerRace",
+    results: "multiplayerResults"
+  };
+
+  Object.entries(views).forEach(([key, id]) => {
+    const node = el(id);
+    if (node) node.hidden = key !== view;
+  });
 }
 
 function isHost() {
@@ -85,24 +127,59 @@ function isHost() {
 function playerName(player) {
   return (
     player.profile?.username ||
-    "Player " + player.user_id.slice(0, 6)
+    "Player " + String(player.user_id).slice(0, 6)
   );
 }
 
-function getMyPlayer() {
+function myPlayer() {
   return mpPlayers.find(
     player => player.user_id === currentUser?.id
   );
 }
 
+function raceLimit() {
+  const value = Number(
+    activeRound?.time_limit ??
+    mpRoom?.time_limit ??
+    60
+  );
+
+  return [15, 30, 60, 120, 180].includes(value)
+    ? value
+    : 60;
+}
+
+function startTimestamp() {
+  return activeRound
+    ? new Date(activeRound.started_at).getTime()
+    : 0;
+}
+
+function raceElapsed() {
+  return Math.max(
+    0,
+    (Date.now() - startTimestamp()) / 1000
+  );
+}
+
+function timeRemaining() {
+  return Math.max(
+    0,
+    raceLimit() - raceElapsed()
+  );
+}
+
 function clearRaceTimers() {
   clearInterval(clockTimer);
-  clearInterval(syncTimer);
   clearTimeout(progressTimer);
 
   clockTimer = null;
-  syncTimer = null;
   progressTimer = null;
+}
+
+function clearSyncTimer() {
+  clearInterval(syncTimer);
+  syncTimer = null;
 }
 
 function resetRaceState() {
@@ -121,13 +198,12 @@ function resetRaceState() {
 
   resultsLoadedFor = null;
 
+  loadingRound = false;
+  loadingRoundId = null;
+
   input.disabled = true;
   input.value = "";
 }
-
-/* =====================================================
-   ROOM SETTINGS
-===================================================== */
 
 function getSelectedSettings() {
   return window.KeystrikeRaceSettings?.get() || {
@@ -139,37 +215,9 @@ function getSelectedSettings() {
   };
 }
 
-async function saveRoomSettings(roomId) {
-  const settings = getSelectedSettings();
-
-  const { error } = await client.rpc(
-    "update_race_room_settings",
-    {
-      target_room_id: roomId,
-
-      selected_game_mode:
-        settings.game_mode,
-
-      selected_text_mode:
-        settings.text_mode,
-
-      selected_time_limit:
-        Number(settings.time_limit),
-
-      selected_max_players:
-        Number(settings.max_players),
-
-      selected_custom_passage:
-        settings.custom_passage
-    }
-  );
-
-  if (error) throw error;
-}
-
-/* =====================================================
-   CREATE ROOM WITH SETTINGS
-===================================================== */
+/* ======================================
+   CREATE ROOM
+====================================== */
 
 async function createConfiguredRoom() {
   if (enteringRoom || mpBusy) return;
@@ -185,7 +233,7 @@ async function createConfiguredRoom() {
   const button = el("createRoomButton");
   button.disabled = true;
 
-  notify("Creating your multiplayer arena...");
+  let createdRoomId = null;
 
   try {
     const settings = getSelectedSettings();
@@ -194,17 +242,19 @@ async function createConfiguredRoom() {
       settings.game_mode === "custom" ||
       settings.text_mode === "custom"
     ) {
-      const passage = settings.custom_passage || "";
+      const text = settings.custom_passage || "";
 
       if (
-        passage.trim().length < 30 ||
-        passage.length > 1000
+        text.trim().length < 30 ||
+        text.length > 1000
       ) {
         throw new Error(
-          "Custom passage must contain 30–1000 characters."
+          "Custom passage must be 30–1000 characters."
         );
       }
     }
+
+    notify("Creating room...");
 
     const { data, error } = await client.rpc(
       "create_race_room"
@@ -217,34 +267,40 @@ async function createConfiguredRoom() {
       : data;
 
     if (!created?.room_id) {
-      throw new Error("Room creation failed.");
+      throw new Error("Room creation failed");
     }
 
-    const roomId = created.room_id;
+    createdRoomId = created.room_id;
 
-    try {
-      await saveRoomSettings(roomId);
-    } catch (settingsError) {
-      // Prevent leaving an unwanted room behind.
-      await client.rpc("leave_race_room", {
-        target_room_id: roomId
-      });
+    const { error: settingsError } = await client.rpc(
+      "update_race_room_settings",
+      {
+        target_room_id: createdRoomId,
+        selected_game_mode: settings.game_mode,
+        selected_text_mode: settings.text_mode,
+        selected_time_limit: Number(settings.time_limit),
+        selected_max_players: Number(settings.max_players),
+        selected_custom_passage: settings.custom_passage || null
+      }
+    );
 
-      throw settingsError;
-    }
+    if (settingsError) throw settingsError;
 
-    await mpEnter(roomId);
+    await mpEnter(createdRoomId);
 
     showToast(
-      "🏁 Room created: " + created.code,
+      "Room created: " + created.code,
       "success"
     );
 
   } catch (error) {
-    console.error("Room creation:", error);
+    reportError(error, "Create room: ");
 
-    notify(error.message, "error");
-    showToast(error.message, "error");
+    if (createdRoomId && mpRoom?.id !== createdRoomId) {
+      await client.rpc("leave_race_room", {
+        target_room_id: createdRoomId
+      });
+    }
 
   } finally {
     enteringRoom = false;
@@ -253,9 +309,9 @@ async function createConfiguredRoom() {
   }
 }
 
-/* =====================================================
-   LOBBY RENDERING
-===================================================== */
+/* ======================================
+   LOBBY
+====================================== */
 
 function renderLobby() {
   if (!mpRoom || !currentUser) return;
@@ -277,28 +333,27 @@ function renderLobby() {
 
     const card = makeElement(
       "div",
-      "lobby-player"
+      "lobby-player-card lobby-player"
     );
 
-    card.classList.toggle(
-      "ready",
-      Boolean(player.is_ready)
-    );
+    if (player.is_ready) {
+      card.classList.add("ready");
+    }
 
     const avatar = makeElement(
       "div",
-      "lobby-avatar"
+      "player-avatar lobby-avatar"
     );
 
     safeAvatar(
       avatar,
       player.profile?.avatar_url,
-      name[0].toUpperCase()
+      name.charAt(0).toUpperCase()
     );
 
     const info = makeElement(
       "div",
-      "lobby-player-info"
+      "player-info lobby-player-info"
     );
 
     info.append(
@@ -310,7 +365,6 @@ function renderLobby() {
           ? " (YOU)"
           : "")
       ),
-
       makeElement(
         "small",
         "",
@@ -324,41 +378,37 @@ function renderLobby() {
     const status = makeElement(
       "span",
       player.is_ready
-        ? "lobby-ready-badge ready"
-        : "lobby-ready-badge",
-
+        ? "lobby-player-ready lobby-ready-badge ready"
+        : "lobby-player-waiting lobby-ready-badge",
       player.is_ready
         ? "✓ READY"
         : "WAITING"
     );
 
     card.append(avatar, info, status);
-
     container.appendChild(card);
   });
 
   for (
     let i = mpPlayers.length;
-    i < mpRoom.max_players;
+    i < Number(mpRoom.max_players || 4);
     i++
   ) {
     const empty = makeElement(
       "div",
-      "lobby-player",
+      "lobby-player-card lobby-empty-slot",
       "+ Waiting for player..."
     );
-
-    empty.style.opacity = ".45";
 
     container.appendChild(empty);
   }
 
-  const me = getMyPlayer();
+  const me = myPlayer();
 
   const everyoneReady =
     mpPlayers.length >= 2 &&
     mpPlayers.length <= mpRoom.max_players &&
-    mpPlayers.every(p => p.is_ready);
+    mpPlayers.every(player => player.is_ready);
 
   const start = el("startMultiplayerButton");
 
@@ -373,34 +423,30 @@ function renderLobby() {
     ? "STARTING..."
     : "🏁 START RACE →";
 
-  el("toggleReadyButton").textContent =
-    me?.is_ready
-      ? "✓ READY"
-      : "I'M READY";
+  const ready = el("toggleReadyButton");
 
-  el("toggleReadyButton").disabled =
-    !me || mpBusy;
+  ready.textContent = me?.is_ready
+    ? "✓ READY"
+    : "I'M READY";
+
+  ready.disabled = !me || mpBusy;
+
+  const status = el("lobbyStatus");
 
   if (mpPlayers.length < 2) {
-    el("lobbyStatus").textContent =
+    status.textContent =
       "Waiting for another player...";
   } else if (!everyoneReady) {
-    el("lobbyStatus").textContent =
+    status.textContent =
       "Waiting for everyone to ready up...";
   } else {
-    el("lobbyStatus").textContent =
+    status.textContent =
       "✅ Everyone ready! Host can start.";
   }
 
-  const existingSettings = el(
-    "ksLobbyModeInfo"
-  );
+  el("ksLobbyModeInfo")?.remove();
 
-  if (existingSettings) {
-    existingSettings.remove();
-  }
-
-  const settingsInfo = makeElement(
+  const summary = makeElement(
     "div",
     "ks-mp-settings-summary",
     `🎮 ${(mpRoom.game_mode || "classic").toUpperCase()} · ` +
@@ -408,19 +454,17 @@ function renderLobby() {
     `⏱ ${mpRoom.time_limit || 60}s`
   );
 
-  settingsInfo.id = "ksLobbyModeInfo";
+  summary.id = "ksLobbyModeInfo";
 
-  el("lobbyPlayers").before(settingsInfo);
+  container.before(summary);
 }
 
-/* =====================================================
+/* ======================================
    START RACE
-===================================================== */
+====================================== */
 
 async function startMultiplayerRace() {
-  if (!mpRoom || !currentUser || startingRace) {
-    return;
-  }
+  if (!mpRoom || !currentUser || startingRace) return;
 
   if (!isHost()) {
     notify("Only the host can start.", "error");
@@ -429,22 +473,16 @@ async function startMultiplayerRace() {
 
   if (
     mpPlayers.length < 2 ||
-    !mpPlayers.every(p => p.is_ready)
+    !mpPlayers.every(player => player.is_ready)
   ) {
-    notify(
-      "At least two players must be ready.",
-      "error"
-    );
-
+    notify("Everyone must be ready.", "error");
     return;
   }
 
   startingRace = true;
 
   const button = el("startMultiplayerButton");
-
   button.disabled = true;
-  button.textContent = "STARTING...";
 
   try {
     const { error } = await client.rpc(
@@ -461,18 +499,20 @@ async function startMultiplayerRace() {
     await mpRefresh();
 
   } catch (error) {
-    console.error("Start race:", error);
-
-    notify(error.message, "error");
+    reportError(error, "Start race: ");
 
   } finally {
     startingRace = false;
+
+    if (mpRoom?.status === "waiting") {
+      renderLobby();
+    }
   }
 }
 
-/* =====================================================
-   LOAD ACTIVE ROUND
-===================================================== */
+/* ======================================
+   ROUND LOADING
+====================================== */
 
 async function loadActiveRound() {
   if (
@@ -488,37 +528,52 @@ async function loadActiveRound() {
     return;
   }
 
+  if (
+    loadingRound &&
+    loadingRoundId === roundId
+  ) return;
+
+  loadingRound = true;
+  loadingRoundId = roundId;
+
   const generation = engineGeneration;
   const roomId = mpRoom.id;
 
-  const { data, error } = await client
-    .from("race_rounds")
-    .select("*")
-    .eq("id", roundId)
-    .eq("room_id", roomId)
-    .single();
+  try {
+    const { data, error } = await client
+      .from("race_rounds")
+      .select("*")
+      .eq("id", roundId)
+      .eq("room_id", roomId)
+      .single();
 
-  if (error) {
-    notify(error.message, "error");
-    return;
+    if (error) throw error;
+
+    if (
+      generation !== engineGeneration ||
+      mpRoom?.id !== roomId ||
+      mpRoom.current_round_id !== roundId ||
+      mpRoom.status !== "racing"
+    ) return;
+
+    resetRaceState();
+
+    activeRound = data;
+
+    prepareRace();
+
+  } catch (error) {
+    reportError(error, "Load race: ");
+
+  } finally {
+    loadingRound = false;
+    loadingRoundId = null;
   }
-
-  if (
-    generation !== engineGeneration ||
-    mpRoom?.id !== roomId ||
-    mpRoom.current_round_id !== roundId
-  ) return;
-
-  resetRaceState();
-
-  activeRound = data;
-
-  prepareRace();
 }
 
-/* =====================================================
+/* ======================================
    PREPARE RACE
-===================================================== */
+====================================== */
 
 function prepareRace() {
   if (!activeRound) return;
@@ -538,7 +593,7 @@ function prepareRace() {
     activeRound.passage;
 
   el("multiplayerRaceStatus").textContent =
-    "Preparing multiplayer race...";
+    "Preparing race...";
 
   updateTracks();
 
@@ -552,58 +607,78 @@ function prepareRace() {
   updateRaceClock();
 }
 
-/* =====================================================
-   COUNTDOWN AND TIMER
-===================================================== */
+/* ======================================
+   COUNTDOWN / TIMER
+====================================== */
 
 function updateRaceClock() {
-  if (!activeRound || !mpRoom) return;
+  if (
+    !activeRound ||
+    !mpRoom ||
+    mpRoom.status !== "racing"
+  ) return;
 
-  const start = new Date(
-    activeRound.started_at
-  ).getTime();
+  const start = startTimestamp();
+  const now = Date.now();
 
-  const remaining = start - Date.now();
+  const countdown = start - now;
 
-  if (remaining > 0) {
-    el("multiplayerCountdown").hidden = false;
+  const countdownElement =
+    el("multiplayerCountdown");
 
-    el("multiplayerCountdown").textContent =
-      Math.ceil(remaining / 1000);
+  const timerElement =
+    el("multiplayerRaceTimer");
+
+  if (countdown > 0) {
+    countdownElement.hidden = false;
+
+    countdownElement.textContent =
+      Math.ceil(countdown / 1000);
+
+    timerElement.textContent =
+      raceLimit() + "s";
 
     el("multiplayerRaceStatus").textContent =
       "🏁 RACE STARTING...";
-
-    el("multiplayerRaceTimer").textContent =
-      "0s";
 
     input.disabled = true;
 
     return;
   }
 
-  el("multiplayerCountdown").hidden = true;
+  countdownElement.hidden = true;
 
-  const elapsed = Math.max(
-    0,
-    Math.floor(
-      (Date.now() - start) / 1000
-    )
-  );
+  const remaining = timeRemaining();
 
-  el("multiplayerRaceTimer").textContent =
-    elapsed + "s";
+  timerElement.textContent =
+    Math.ceil(remaining) + "s";
 
-  const me = getMyPlayer();
+  const me = myPlayer();
 
   if (me?.finished_at) {
-    raceComplete = true;
     raceRunning = false;
+    raceComplete = true;
 
     input.disabled = true;
 
     el("multiplayerRaceStatus").textContent =
-      "🏁 FINISHED! Waiting for other players...";
+      "🏁 FINISHED! Waiting for results...";
+
+    return;
+  }
+
+  if (remaining <= 0) {
+    raceRunning = false;
+    raceComplete = true;
+
+    input.disabled = true;
+
+    timerElement.textContent = "0s";
+
+    el("multiplayerRaceStatus").textContent =
+      "⏱ TIME UP! Calculating results...";
+
+    checkRaceCompletion();
 
     return;
   }
@@ -618,42 +693,40 @@ function updateRaceClock() {
 
     input.focus();
   }
-
-  if (elapsed >= RACE_TIMEOUT) {
-    raceRunning = false;
-    raceComplete = true;
-
-    input.disabled = true;
-
-    clearInterval(clockTimer);
-
-    checkRaceCompletion();
-  }
 }
 
-/* =====================================================
-   RACE TRACKS
-===================================================== */
+/* ======================================
+   TRACKS / SCOREBOARD
+====================================== */
 
 function updateTracks() {
   if (!mpRoom || !currentUser) return;
 
   const container = el("multiplayerTracks");
 
+  if (!container) return;
+
   const existing = new Map();
 
   container.querySelectorAll(
     "[data-racer-id]"
   ).forEach(track => {
-    existing.set(
-      track.dataset.racerId,
-      track
-    );
+    existing.set(track.dataset.racerId, track);
   });
 
   const fragment = document.createDocumentFragment();
 
-  mpPlayers.forEach((player, index) => {
+  const ordered = [...mpPlayers].sort((a, b) => {
+    if (a.finished_at && !b.finished_at) return -1;
+    if (!a.finished_at && b.finished_at) return 1;
+
+    return (
+      Number(b.progress || 0) -
+      Number(a.progress || 0)
+    );
+  });
+
+  ordered.forEach((player, index) => {
     let track = existing.get(player.user_id);
 
     if (!track) {
@@ -698,7 +771,7 @@ function updateTracks() {
     track.querySelector(
       ".multiplayer-racer-name"
     ).textContent =
-      playerName(player) +
+      `${index + 1}. ${playerName(player)}` +
       (player.user_id === currentUser.id
         ? " (YOU)"
         : "");
@@ -716,7 +789,8 @@ function updateTracks() {
     track.querySelector(
       ".multiplayer-track-progress"
     ).textContent =
-      `${progress}% · ${player.current_wpm || 0} WPM`;
+      `${progress}% · ${player.current_wpm || 0} WPM` +
+      (player.finished_at ? " · 🏁" : "");
 
     fragment.appendChild(track);
   });
@@ -727,11 +801,13 @@ function updateTracks() {
 }
 
 function updateCarPositions() {
-  document.querySelectorAll(
+  const tracks = document.querySelectorAll(
     "#multiplayerTracks .multiplayer-track"
-  ).forEach(track => {
+  );
+
+  tracks.forEach(track => {
     const player = mpPlayers.find(
-      p => p.user_id === track.dataset.racerId
+      item => item.user_id === track.dataset.racerId
     );
 
     if (!player) return;
@@ -743,6 +819,8 @@ function updateCarPositions() {
     const car = track.querySelector(
       ".multiplayer-car"
     );
+
+    if (!line || !car) return;
 
     const available = Math.max(
       0,
@@ -760,17 +838,15 @@ function updateCarPositions() {
   });
 }
 
-/* =====================================================
-   PASSAGE RENDERING
-===================================================== */
+/* ======================================
+   PASSAGE DISPLAY
+====================================== */
 
 function renderPassage() {
   if (!activeRound) return;
 
   const typed = input.value;
   const passage = activeRound.passage;
-
-  const container = el("multiplayerPassage");
 
   const fragment = document.createDocumentFragment();
 
@@ -789,12 +865,12 @@ function renderPassage() {
     fragment.appendChild(span);
   }
 
-  container.replaceChildren(fragment);
+  el("multiplayerPassage").replaceChildren(fragment);
 }
 
-/* =====================================================
-   CORRECT PROGRESS
-===================================================== */
+/* ======================================
+   CORRECT PREFIX
+====================================== */
 
 function correctPrefixLength() {
   if (!activeRound) return 0;
@@ -815,29 +891,30 @@ function correctPrefixLength() {
   return correct;
 }
 
+/*
+  Existing Supabase RPC accepts only an exact
+  passage prefix.
+
+  Therefore, mistakes must be corrected before
+  server-confirmed progress can advance.
+*/
+
 function updateLocalStats() {
   if (!activeRound) return;
 
   const correct = correctPrefixLength();
 
-  const start = new Date(
-    activeRound.started_at
-  ).getTime();
-
   const elapsed = Math.max(
     0.1,
-    (Date.now() - start) / 1000
+    raceElapsed()
   );
 
   const wpm = Math.round(
-    (correct / 5) /
-    (elapsed / 60)
+    (correct / 5) / (elapsed / 60)
   );
 
   const progress = Math.floor(
-    correct /
-    activeRound.passage.length *
-    100
+    correct / activeRound.passage.length * 100
   );
 
   el("multiplayerWpm").textContent =
@@ -847,9 +924,9 @@ function updateLocalStats() {
     clamp(progress, 0, 100) + "%";
 }
 
-/* =====================================================
-   SUBMIT PROGRESS TO SUPABASE
-===================================================== */
+/* ======================================
+   PROGRESS SUBMISSION
+====================================== */
 
 async function submitProgress() {
   if (
@@ -866,10 +943,7 @@ async function submitProgress() {
 
   const correct = correctPrefixLength();
 
-  if (
-    correct === lastSubmittedLength &&
-    correct !== activeRound.passage.length
-  ) {
+  if (correct <= lastSubmittedLength) {
     return;
   }
 
@@ -900,20 +974,23 @@ async function submitProgress() {
       currentUser?.id !== userId
     ) return;
 
-    lastSubmittedLength = correct;
+    lastSubmittedLength = Math.max(
+      lastSubmittedLength,
+      correct
+    );
+
+    const me = myPlayer();
+
+    if (me) {
+      me.progress = data.progress;
+      me.current_wpm = data.wpm;
+    }
 
     el("multiplayerWpm").textContent =
       data.wpm;
 
     el("multiplayerProgress").textContent =
       data.progress + "%";
-
-    const me = getMyPlayer();
-
-    if (me) {
-      me.progress = data.progress;
-      me.current_wpm = data.wpm;
-    }
 
     updateTracks();
 
@@ -932,9 +1009,7 @@ async function submitProgress() {
     }
 
   } catch (error) {
-    console.error("Race progress:", error);
-
-    notify(error.message, "error");
+    reportError(error, "Progress: ");
 
   } finally {
     progressBusy = false;
@@ -952,45 +1027,54 @@ async function submitProgress() {
   }
 }
 
-/* =====================================================
+/* ======================================
    COMPLETION CHECK
-===================================================== */
+====================================== */
 
 async function checkRaceCompletion() {
   if (
     !mpRoom ||
     !currentUser ||
-    mpRoom.status !== "racing"
+    mpRoom.status !== "racing" ||
+    checkingCompletion
   ) return;
+
+  checkingCompletion = true;
+
+  const roomId = mpRoom.id;
 
   try {
     const { error } = await client.rpc(
       "finish_multiplayer_race",
       {
-        target_room_id: mpRoom.id
+        target_room_id: roomId
       }
     );
 
     if (error) throw error;
 
-    await mpRefresh();
+    if (mpRoom?.id === roomId) {
+      await mpRefresh();
+    }
 
   } catch (error) {
-    console.warn(
-      "Race completion:",
-      error.message
-    );
+    reportError(error, "Race completion: ");
+
+  } finally {
+    checkingCompletion = false;
   }
 }
 
-/* =====================================================
-   LEADERBOARD
-===================================================== */
+/* ======================================
+   RESULTS / LEADERBOARD
+====================================== */
 
 async function renderResults() {
   if (!mpRoom?.current_round_id) return;
 
   const roundId = mpRoom.current_round_id;
+  const roomId = mpRoom.id;
+  const generation = engineGeneration;
 
   showView("results");
 
@@ -1003,132 +1087,137 @@ async function renderResults() {
 
   if (resultsLoadedFor === roundId) return;
 
-  const { data, error } = await client.rpc(
-    "get_multiplayer_leaderboard",
-    {
-      target_round_id: roundId
-    }
-  );
-
-  if (error) {
-    console.error("Leaderboard:", error);
-
-    notify(error.message, "error");
-    return;
-  }
-
+  // Prevent duplicate leaderboard requests.
   resultsLoadedFor = roundId;
 
-  const container = el("multiplayerLeaderboard");
-
-  container.replaceChildren();
-
-  const results = data || [];
-
-  const finishedIds = new Set(
-    results.map(result => result.user_id)
-  );
-
-  results.forEach(result => {
-    const item = makeElement(
-      "div",
-      "multiplayer-leaderboard-item"
+  try {
+    const { data, error } = await client.rpc(
+      "get_multiplayer_leaderboard",
+      {
+        target_round_id: roundId
+      }
     );
 
-    const medal =
-      result.race_position === 1
-        ? "🥇"
-        : result.race_position === 2
-          ? "🥈"
-          : result.race_position === 3
-            ? "🥉"
-            : "🏁";
+    if (error) throw error;
 
-    const position = makeElement(
-      "span",
-      "multiplayer-position",
-      medal
+    if (
+      generation !== engineGeneration ||
+      mpRoom?.id !== roomId ||
+      mpRoom.current_round_id !== roundId
+    ) return;
+
+    const finishedResults = data || [];
+
+    const resultMap = new Map(
+      finishedResults.map(result => [
+        result.user_id,
+        result
+      ])
     );
 
-    const name = makeElement(
-      "span",
-      "multiplayer-leaderboard-name",
-      result.username || "Player"
-    );
+    const players = [...mpPlayers];
 
-    const speed = makeElement(
-      "span",
-      "multiplayer-leaderboard-wpm",
-      result.wpm + " WPM"
-    );
+    /*
+      Finished racers rank by completion time.
+      Remaining racers rank by progress, then WPM.
+    */
 
-    item.append(position, name, speed);
+    players.sort((a, b) => {
+      const resultA = resultMap.get(a.user_id);
+      const resultB = resultMap.get(b.user_id);
 
-    container.appendChild(item);
-  });
+      if (resultA && !resultB) return -1;
+      if (!resultA && resultB) return 1;
 
-  // Show participants who did not finish.
+      if (resultA && resultB) {
+        return new Date(resultA.finish_time) -
+          new Date(resultB.finish_time);
+      }
 
-  mpPlayers
-    .filter(player => !finishedIds.has(player.user_id))
-    .forEach(player => {
+      return (
+        Number(b.progress || 0) -
+        Number(a.progress || 0)
+      ) || (
+        Number(b.current_wpm || 0) -
+        Number(a.current_wpm || 0)
+      );
+    });
+
+    const container = el("multiplayerLeaderboard");
+
+    container.replaceChildren();
+
+    players.forEach((player, index) => {
+      const result = resultMap.get(player.user_id);
+
       const item = makeElement(
         "div",
         "multiplayer-leaderboard-item"
       );
 
-      item.append(
-        makeElement(
-          "span",
-          "multiplayer-position",
-          "—"
-        ),
+      if (index === 0) {
+        item.classList.add("winner");
+      }
 
-        makeElement(
-          "span",
-          "multiplayer-leaderboard-name",
-          playerName(player)
-        ),
+      const medal =
+        index === 0 ? "🥇" :
+        index === 1 ? "🥈" :
+        index === 2 ? "🥉" : "🏁";
 
-        makeElement(
-          "span",
-          "multiplayer-leaderboard-wpm",
-          "DNF"
-        )
+      const position = makeElement(
+        "span",
+        "multiplayer-position",
+        medal
       );
+
+      const name = makeElement(
+        "span",
+        "multiplayer-leaderboard-name",
+        result?.username || playerName(player)
+      );
+
+      const speed = makeElement(
+        "span",
+        "multiplayer-leaderboard-wpm",
+        `${result?.wpm ?? player.current_wpm ?? 0} WPM · ` +
+        `${result ? "FINISHED" : (player.progress || 0) + "%"}`
+      );
+
+      item.append(position, name, speed);
 
       container.appendChild(item);
     });
 
-  const winner = results[0];
+    const winner = players[0];
 
-  if (winner) {
-    notify(
-      "🏆 WINNER: " +
-      (winner.username || "Player") +
-      " — " +
-      winner.wpm +
-      " WPM!",
-      "success"
-    );
+    if (winner) {
+      notify(
+        "🏆 WINNER: " + playerName(winner),
+        "success"
+      );
 
-    if (winner.user_id === currentUser?.id) {
-      playSound("victory");
+      if (winner.user_id === currentUser?.id) {
+        playSound("victory");
+      }
+    } else {
+      notify("Race finished.");
     }
 
-  } else {
-    notify("Race ended without a finisher.");
+    const button = el("raceAgainButton");
+
+    button.hidden = !isHost();
+    button.disabled = false;
+
+  } catch (error) {
+    resultsLoadedFor = null;
+
+    reportError(error, "Leaderboard: ");
   }
-
-  const button = el("raceAgainButton");
-
-  button.hidden = !isHost();
-  button.disabled = false;
 }
 
-/* =====================================================
+/* ======================================
    RACE AGAIN
-===================================================== */
+====================================== */
 
 async function raceAgain() {
   if (
@@ -1140,7 +1229,6 @@ async function raceAgain() {
   resettingRoom = true;
 
   const button = el("raceAgainButton");
-
   button.disabled = true;
 
   try {
@@ -1163,7 +1251,7 @@ async function raceAgain() {
     await mpRefresh();
 
   } catch (error) {
-    notify(error.message, "error");
+    reportError(error, "Rematch: ");
 
   } finally {
     resettingRoom = false;
@@ -1171,9 +1259,9 @@ async function raceAgain() {
   }
 }
 
-/* =====================================================
-   RENDER INTEGRATION
-===================================================== */
+/* ======================================
+   MAIN RENDER
+====================================== */
 
 mpRender = function () {
   if (!mpRoom || !currentUser) return;
@@ -1207,15 +1295,58 @@ mpRender = function () {
   }
 };
 
-/* =====================================================
-   ROOM ENTRY INTEGRATION
-===================================================== */
+/* ======================================
+   RELIABLE REFRESH
+====================================== */
+
+/*
+  Keep the original database-loading logic
+  from script.js.
+
+  This wrapper queues refresh requests instead
+  of losing them when multiple Realtime events
+  arrive together.
+*/
+
+const originalRefresh = mpRefresh;
+
+mpRefresh = async function () {
+  if (!mpRoom || !currentUser) return;
+
+  if (refreshing) {
+    refreshQueued = true;
+    return;
+  }
+
+  refreshing = true;
+
+  try {
+    do {
+      refreshQueued = false;
+
+      await originalRefresh();
+
+    } while (
+      refreshQueued &&
+      mpRoom &&
+      currentUser
+    );
+
+  } finally {
+    refreshing = false;
+  }
+};
+
+/* ======================================
+   ROOM ENTRY
+====================================== */
 
 const originalEnter = mpEnter;
 
 mpEnter = async function (roomId) {
   engineGeneration++;
 
+  clearSyncTimer();
   resetRaceState();
 
   await originalEnter(roomId);
@@ -1248,10 +1379,16 @@ mpEnter = async function (roomId) {
     )
     .subscribe();
 
-  clearInterval(syncTimer);
+  /*
+    Important fix:
+    The sync timer is NOT cleared by prepareRace.
+  */
 
   syncTimer = setInterval(() => {
-    if (mpRoom) {
+    if (
+      mpRoom?.id === roomId &&
+      currentUser
+    ) {
       mpRefresh();
     }
   }, REFRESH_INTERVAL);
@@ -1259,70 +1396,125 @@ mpEnter = async function (roomId) {
   await mpRefresh();
 };
 
-/* =====================================================
-   ROOM CLEANUP INTEGRATION
-===================================================== */
+/* ======================================
+   ROOM CLEANUP
+====================================== */
 
 const originalCleanup = mpCleanup;
 
 mpCleanup = async function () {
   engineGeneration++;
 
+  clearSyncTimer();
   resetRaceState();
 
   if (raceChannel) {
     const channel = raceChannel;
     raceChannel = null;
 
-    await client.removeChannel(channel);
+    try {
+      await client.removeChannel(channel);
+    } catch (error) {
+      console.warn("Race channel cleanup:", error);
+    }
   }
 
   await originalCleanup();
 };
 
-/* =====================================================
-   BUTTON EVENTS
-===================================================== */
+/* ======================================
+   LEAVE ROOM
+====================================== */
 
-// Capture-phase listeners prevent the old placeholder
-// handlers from displaying their error messages.
+/*
+  The original script.js already contains
+  leave_race_room RPC + cleanup.
 
-el("startMultiplayerButton").addEventListener(
-  "click",
-  event => {
-    event.preventDefault();
-    event.stopImmediatePropagation();
+  We intercept the button to prevent duplicate
+  leave requests and request immediate cleanup.
+*/
 
-    startMultiplayerRace();
-  },
-  true
+async function leaveMultiplayerRoom() {
+  if (
+    !mpRoom ||
+    !currentUser ||
+    leavingRoom
+  ) return;
+
+  leavingRoom = true;
+
+  const roomId = mpRoom.id;
+  const button = el("leaveRoomButton");
+
+  button.disabled = true;
+
+  try {
+    const { error } = await client.rpc(
+      "leave_race_room",
+      {
+        target_room_id: roomId
+      }
+    );
+
+    if (error) throw error;
+
+    await mpCleanup();
+
+    notify("You left the room.", "success");
+
+  } catch (error) {
+    reportError(error, "Leave room: ");
+
+  } finally {
+    leavingRoom = false;
+    button.disabled = false;
+  }
+}
+
+/* ======================================
+   BUTTON HANDLERS
+====================================== */
+
+function captureButton(id, handler) {
+  const button = el(id);
+
+  if (!button) return;
+
+  button.addEventListener(
+    "click",
+    event => {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+
+      handler();
+    },
+    true
+  );
+}
+
+captureButton(
+  "createRoomButton",
+  createConfiguredRoom
 );
 
-el("raceAgainButton").addEventListener(
-  "click",
-  event => {
-    event.preventDefault();
-    event.stopImmediatePropagation();
-
-    raceAgain();
-  },
-  true
+captureButton(
+  "startMultiplayerButton",
+  startMultiplayerRace
 );
 
-el("createRoomButton").addEventListener(
-  "click",
-  event => {
-    event.preventDefault();
-    event.stopImmediatePropagation();
-
-    createConfiguredRoom();
-  },
-  true
+captureButton(
+  "raceAgainButton",
+  raceAgain
 );
 
-/* =====================================================
+captureButton(
+  "leaveRoomButton",
+  leaveMultiplayerRoom
+);
+
+/* ======================================
    TYPING INPUT
-===================================================== */
+====================================== */
 
 input.addEventListener("input", () => {
   if (
@@ -1354,22 +1546,18 @@ input.addEventListener("input", () => {
     submitProgress();
 
   } else {
-    progressPending = true;
-
     clearTimeout(progressTimer);
 
     progressTimer = setTimeout(() => {
-      progressPending = false;
       lastProgressSent = Date.now();
-
       submitProgress();
     }, PROGRESS_INTERVAL);
   }
 });
 
-/* =====================================================
-   PERIODIC COMPLETION CHECK
-===================================================== */
+/* ======================================
+   PERIODIC RACE CHECK
+====================================== */
 
 setInterval(() => {
   if (
@@ -1379,23 +1567,43 @@ setInterval(() => {
   ) return;
 
   checkRaceCompletion();
-}, 5000);
+}, 2000);
 
-/* =====================================================
+/* ======================================
+   BROWSER VISIBILITY
+====================================== */
+
+document.addEventListener(
+  "visibilitychange",
+  () => {
+    if (
+      document.visibilityState === "visible" &&
+      mpRoom
+    ) {
+      mpRefresh();
+
+      if (activeRound) {
+        updateRaceClock();
+      }
+    }
+  }
+);
+
+/* ======================================
    RESIZE
-===================================================== */
+====================================== */
 
 window.addEventListener(
   "resize",
   updateCarPositions
 );
 
-/* =====================================================
-   INITIALIZATION
-===================================================== */
+/* ======================================
+   READY
+====================================== */
 
 console.log(
-  "%c🏎 KEYSTRIKE V5 MULTIPLAYER ENGINE READY",
+  "%c🏎 KEYSTRIKE V5 MULTIPLAYER FIX LOADED",
   "color:#73e0a3;font-size:18px;font-weight:bold"
 );
 
