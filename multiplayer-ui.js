@@ -1,500 +1,351 @@
 "use strict";
 
-/* =====================================================
-   KEYSTRIKE V5
-   MULTIPLAYER V6 INTERFACE
-===================================================== */
+/*
+  KEYSTRIKE V5
+  MULTIPLAYER ROOM SETTINGS — UI FIX
+
+  Fixes:
+  - Settings remain inside multiplayerHome
+  - CREATE / JOIN section stays visible
+  - Summary updates immediately
+  - Mode, text, time and player selection sync
+  - No MutationObserver loops
+  - Existing racing engine API preserved
+*/
 
 (() => {
+  const $ = id => document.getElementById(id);
 
-const $ = id => document.getElementById(id);
+  const MODES = [
+    {
+      id: "classic",
+      icon: "🏎️",
+      name: "CLASSIC RACE",
+      description: "First to finish wins"
+    },
+    {
+      id: "sprint",
+      icon: "⚡",
+      name: "SPEED SPRINT",
+      description: "Race against the clock"
+    },
+    {
+      id: "accuracy",
+      icon: "🎯",
+      name: "ACCURACY DUEL",
+      description: "Precision determines victory"
+    },
+    {
+      id: "code",
+      icon: "💻",
+      name: "CODE BATTLE",
+      description: "Race with programming text"
+    },
+    {
+      id: "custom",
+      icon: "📝",
+      name: "CUSTOM RACE",
+      description: "Create your own challenge"
+    }
+  ];
 
-const MODES = [
-  {
-    id: "classic",
-    icon: "🏎️",
-    name: "CLASSIC RACE",
-    description: "First to finish wins"
-  },
-  {
-    id: "sprint",
-    icon: "⚡",
-    name: "SPEED SPRINT",
-    description: "Race against the clock"
-  },
-  {
-    id: "accuracy",
-    icon: "🎯",
-    name: "ACCURACY DUEL",
-    description: "Precision determines victory"
-  },
-  {
-    id: "code",
-    icon: "💻",
-    name: "CODE BATTLE",
-    description: "Race with programming text"
-  },
-  {
-    id: "custom",
-    icon: "📝",
-    name: "CUSTOM RACE",
-    description: "Create your own challenge"
+  let selectedMode = "classic";
+  let selectedText = "words";
+  let selectedTime = 60;
+  let selectedPlayers = 4;
+
+  function element(tag, className = "", text = "") {
+    const node = document.createElement(tag);
+    node.className = className;
+    node.textContent = text;
+    return node;
   }
-];
 
-let selectedMode = "classic";
-let selectedText = "words";
-let selectedTime = 60;
-let selectedPlayers = 4;
-
-function element(tag, className, text = "") {
-  const node = document.createElement(tag);
-
-  node.className = className;
-  node.textContent = text;
-
-  return node;
-}
-
-function createSection(title) {
-  const section = element(
-    "div",
-    "ks-mp-setting-section"
-  );
-
-  section.appendChild(
-    element(
+  function createSection(title) {
+    const section = element(
       "div",
-      "ks-mp-setting-title",
-      title
-    )
-  );
-
-  return section;
-}
-
-function createChoice(
-  label,
-  value,
-  selected,
-  onClick
-) {
-  const button = element(
-    "button",
-    "ks-mp-choice",
-    label
-  );
-
-  button.type = "button";
-
-  button.dataset.value = value;
-
-  button.classList.toggle(
-    "active",
-    selected
-  );
-
-  button.addEventListener("click", onClick);
-
-  return button;
-}
-
-function updateGroup(group, value) {
-  group.querySelectorAll(
-    ".ks-mp-choice"
-  ).forEach(button => {
-
-    button.classList.toggle(
-      "active",
-      button.dataset.value === String(value)
+      "ks-mp-setting-section"
     );
 
-  });
-}
+    section.appendChild(
+      element("div", "ks-mp-setting-title", title)
+    );
 
-function buildRoomSettings() {
+    return section;
+  }
 
-  const home = $("multiplayerHome");
-
-  if (!home) return;
-
-  if ($("ksMultiplayerSettings")) return;
-
-  const panel = element(
-    "div",
-    "ks-mp-settings-panel"
-  );
-
-  panel.id = "ksMultiplayerSettings";
-
-  const heading = element(
-    "div",
-    "ks-mp-settings-heading"
-  );
-
-  heading.append(
-    element(
-      "div",
-      "eyebrow",
-      "CONFIGURE YOUR ARENA"
-    ),
-    element(
-      "h2",
-      "",
-      "Create Your Battle."
-    ),
-    element(
-      "p",
-      "",
-      "Choose your race mode, passage and competition settings."
-    )
-  );
-
-  panel.appendChild(heading);
-
-  /* GAME MODES */
-
-  const modeSection = createSection(
-    "🎮 SELECT GAME MODE"
-  );
-
-  const modeGrid = element(
-    "div",
-    "ks-mp-mode-grid"
-  );
-
-  MODES.forEach(mode => {
-
+  function createChoice(label, value, selected, callback) {
     const button = element(
       "button",
-      "ks-mp-mode-card"
+      "ks-mp-choice",
+      label
     );
 
     button.type = "button";
+    button.dataset.value = String(value);
+    button.classList.toggle("active", selected);
 
-    button.dataset.mode = mode.id;
+    button.addEventListener("click", callback);
 
-    const icon = element(
-      "span",
-      "ks-mp-mode-icon",
-      mode.icon
-    );
+    return button;
+  }
 
-    const name = element(
-      "strong",
-      "",
-      mode.name
-    );
-
-    const description = element(
-      "small",
-      "",
-      mode.description
-    );
-
-    button.append(
-      icon,
-      name,
-      description
-    );
-
-    button.addEventListener("click", () => {
-
-      selectedMode = mode.id;
-
-      modeGrid.querySelectorAll(
-        ".ks-mp-mode-card"
-      ).forEach(card => {
-
-        card.classList.toggle(
+  function updateGroup(group, value) {
+    group.querySelectorAll(".ks-mp-choice")
+      .forEach(button => {
+        button.classList.toggle(
           "active",
-          card.dataset.mode === selectedMode
+          button.dataset.value === String(value)
         );
+      });
+  }
 
+  function buildRoomSettings() {
+    const home = $("multiplayerHome");
+
+    if (!home || $("ksMultiplayerSettings")) return;
+
+    const panel = element(
+      "div",
+      "ks-mp-settings-panel"
+    );
+
+    panel.id = "ksMultiplayerSettings";
+
+    const heading = element(
+      "div",
+      "ks-mp-settings-heading"
+    );
+
+    heading.append(
+      element("div", "eyebrow", "CONFIGURE YOUR ARENA"),
+      element("h2", "", "Create Your Battle."),
+      element(
+        "p",
+        "",
+        "Choose your race mode, passage and competition settings."
+      )
+    );
+
+    panel.appendChild(heading);
+
+    // GAME MODES
+
+    const modeSection = createSection("🎮 SELECT GAME MODE");
+    const modeGrid = element("div", "ks-mp-mode-grid");
+
+    MODES.forEach(mode => {
+      const button = element(
+        "button",
+        "ks-mp-mode-card"
+      );
+
+      button.type = "button";
+      button.dataset.mode = mode.id;
+
+      button.append(
+        element("span", "ks-mp-mode-icon", mode.icon),
+        element("strong", "", mode.name),
+        element("small", "", mode.description)
+      );
+
+      button.addEventListener("click", () => {
+        selectedMode = mode.id;
+
+        if (selectedMode === "code") {
+          selectedText = "code";
+        } else if (selectedMode === "custom") {
+          selectedText = "custom";
+        }
+
+        updateEverything();
       });
 
-      if (selectedMode === "code") {
-        selectedText = "code";
-      }
-
-      if (selectedMode === "custom") {
-        selectedText = "custom";
-      }
-
-      updateTextSelection();
-
+      modeGrid.appendChild(button);
     });
 
-    modeGrid.appendChild(button);
+    modeSection.appendChild(modeGrid);
+    panel.appendChild(modeSection);
 
-  });
+    // TEXT TYPES
 
-  modeSection.appendChild(modeGrid);
+    const textSection = createSection("⌨️ TEXT TYPE");
 
-  panel.appendChild(modeSection);
-
-  /* TEXT TYPE */
-
-  const textSection = createSection(
-    "⌨️ TEXT TYPE"
-  );
-
-  const textGroup = element(
-    "div",
-    "ks-mp-choice-group"
-  );
-
-  textGroup.id = "ksMpTextOptions";
-
-  const textOptions = [
-    ["Words", "words"],
-    ["Quote", "quote"],
-    ["Code", "code"],
-    ["Punctuation", "punctuation"],
-    ["Numbers", "numbers"],
-    ["Custom", "custom"]
-  ];
-
-  textOptions.forEach(([label, value]) => {
-
-    const button = createChoice(
-      label,
-      value,
-      value === selectedText,
-      () => {
-
-        selectedText = value;
-
-        updateTextSelection();
-
-      }
+    const textGroup = element(
+      "div",
+      "ks-mp-choice-group"
     );
 
-    textGroup.appendChild(button);
+    textGroup.id = "ksMpTextOptions";
 
-  });
+    const textOptions = [
+      ["Words", "words"],
+      ["Quote", "quote"],
+      ["Code", "code"],
+      ["Punctuation", "punctuation"],
+      ["Numbers", "numbers"],
+      ["Custom", "custom"]
+    ];
 
-  textSection.appendChild(textGroup);
+    textOptions.forEach(([label, value]) => {
+      textGroup.appendChild(
+        createChoice(
+          label,
+          value,
+          value === selectedText,
+          () => {
+            selectedText = value;
+            updateEverything();
+          }
+        )
+      );
+    });
 
-  /* CUSTOM PASSAGE */
+    textSection.appendChild(textGroup);
 
-  const customWrapper = element(
-    "div",
-    "ks-mp-custom-wrapper"
-  );
+    // CUSTOM PASSAGE
 
-  customWrapper.id = "ksMpCustomWrapper";
-
-  customWrapper.hidden = true;
-
-  const customInput = document.createElement(
-    "textarea"
-  );
-
-  customInput.id = "ksMpCustomPassage";
-
-  customInput.className =
-    "ks-mp-custom-input";
-
-  customInput.placeholder =
-    "Enter your custom typing passage (30–1000 characters)...";
-
-  customInput.maxLength = 1000;
-
-  customInput.rows = 4;
-
-  customWrapper.appendChild(customInput);
-
-  textSection.appendChild(customWrapper);
-
-  panel.appendChild(textSection);
-
-  /* TIME LIMIT */
-
-  const timeSection = createSection(
-    "⏱️ TIME LIMIT"
-  );
-
-  const timeGroup = element(
-    "div",
-    "ks-mp-choice-group"
-  );
-
-  [
-    15,
-    30,
-    60,
-    120,
-    180
-  ].forEach(seconds => {
-
-    const button = createChoice(
-      seconds + "s",
-      seconds,
-      seconds === selectedTime,
-      () => {
-
-        selectedTime = seconds;
-
-        updateGroup(
-          timeGroup,
-          selectedTime
-        );
-
-      }
+    const customWrapper = element(
+      "div",
+      "ks-mp-custom-wrapper"
     );
 
-    timeGroup.appendChild(button);
+    customWrapper.id = "ksMpCustomWrapper";
+    customWrapper.hidden = true;
 
-  });
+    const customInput = document.createElement("textarea");
 
-  timeSection.appendChild(timeGroup);
+    customInput.id = "ksMpCustomPassage";
+    customInput.className = "ks-mp-custom-input";
+    customInput.placeholder =
+      "Enter your custom typing passage (30–1000 characters)...";
 
-  panel.appendChild(timeSection);
+    customInput.maxLength = 1000;
+    customInput.rows = 4;
 
-  /* PLAYER LIMIT */
+    customWrapper.appendChild(customInput);
+    textSection.appendChild(customWrapper);
+    panel.appendChild(textSection);
 
-  const playerSection = createSection(
-    "👥 MAX PLAYERS"
-  );
+    // TIME LIMIT
 
-  const playerGroup = element(
-    "div",
-    "ks-mp-choice-group"
-  );
+    const timeSection = createSection("⏱️ TIME LIMIT");
+    const timeGroup = element("div", "ks-mp-choice-group");
 
-  [2, 3, 4].forEach(count => {
+    [15, 30, 60, 120, 180].forEach(seconds => {
+      timeGroup.appendChild(
+        createChoice(
+          seconds + "s",
+          seconds,
+          seconds === selectedTime,
+          () => {
+            selectedTime = seconds;
+            updateEverything();
+          }
+        )
+      );
+    });
 
-    const button = createChoice(
-      count + " PLAYERS",
-      count,
-      count === selectedPlayers,
-      () => {
+    timeSection.appendChild(timeGroup);
+    panel.appendChild(timeSection);
 
-        selectedPlayers = count;
+    // MAX PLAYERS
 
-        updateGroup(
-          playerGroup,
-          selectedPlayers
-        );
+    const playerSection = createSection("👥 MAX PLAYERS");
+    const playerGroup = element("div", "ks-mp-choice-group");
 
-      }
+    [2, 3, 4].forEach(count => {
+      playerGroup.appendChild(
+        createChoice(
+          count + " PLAYERS",
+          count,
+          count === selectedPlayers,
+          () => {
+            selectedPlayers = count;
+            updateEverything();
+          }
+        )
+      );
+    });
+
+    playerSection.appendChild(playerGroup);
+    panel.appendChild(playerSection);
+
+    // SUMMARY
+
+    const summary = element(
+      "div",
+      "ks-mp-settings-summary"
     );
 
-    playerGroup.appendChild(button);
+    summary.id = "ksMpSettingsSummary";
 
-  });
+    panel.appendChild(summary);
 
-  playerSection.appendChild(playerGroup);
+    /*
+      IMPORTANT:
+      The panel must be INSIDE multiplayerHome.
 
-  panel.appendChild(playerSection);
+      This keeps room creation settings together
+      with CREATE ROOM and JOIN ROOM buttons.
+    */
 
-  /* SUMMARY */
+    home.prepend(panel);
 
-  const summary = element(
-    "div",
-    "ks-mp-settings-summary"
-  );
+    function updateEverything() {
+      modeGrid.querySelectorAll(".ks-mp-mode-card")
+        .forEach(button => {
+          button.classList.toggle(
+            "active",
+            button.dataset.mode === selectedMode
+          );
+        });
 
-  summary.id = "ksMpSettingsSummary";
+      updateGroup(textGroup, selectedText);
+      updateGroup(timeGroup, selectedTime);
+      updateGroup(playerGroup, selectedPlayers);
 
-  summary.textContent =
-    "🏎️ CLASSIC RACE · WORDS · 60s · 4 PLAYERS";
+      customWrapper.hidden =
+        selectedText !== "custom" &&
+        selectedMode !== "custom";
 
-  panel.appendChild(summary);
+      const mode = MODES.find(
+        item => item.id === selectedMode
+      );
 
-  home.parentNode.insertBefore(
-    panel,
-    home
-  );
+      summary.textContent =
+        `${mode.icon} ${mode.name} · ` +
+        `${selectedText.toUpperCase()} · ` +
+        `${selectedTime}s · ` +
+        `${selectedPlayers} PLAYERS`;
+    }
 
-  function updateTextSelection() {
-
-    updateGroup(
-      textGroup,
-      selectedText
-    );
-
-    customWrapper.hidden =
-      selectedText !== "custom" &&
-      selectedMode !== "custom";
-
-    updateSummary();
-
+    updateEverything();
   }
 
-  function updateSummary() {
+  // API expected by phase4.js
 
-    const mode = MODES.find(
-      item => item.id === selectedMode
+  window.KeystrikeRaceSettings = {
+    get() {
+      return {
+        game_mode: selectedMode,
+        text_mode: selectedText,
+        time_limit: selectedTime,
+        max_players: selectedPlayers,
+        custom_passage:
+          $("ksMpCustomPassage")?.value.trim() || null
+      };
+    }
+  };
+
+  if (document.readyState === "loading") {
+    document.addEventListener(
+      "DOMContentLoaded",
+      buildRoomSettings
     );
-
-    summary.textContent =
-      `${mode.icon} ${mode.name} · ` +
-      `${selectedText.toUpperCase()} · ` +
-      `${selectedTime}s · ` +
-      `${selectedPlayers} PLAYERS`;
-
+  } else {
+    buildRoomSettings();
   }
 
-  const observer = new MutationObserver(
-    updateSummary
-  );
-
-  observer.observe(modeGrid, {
-    attributes: true,
-    subtree: true,
-    attributeFilter: ["class"]
-  });
-
-  modeGrid.querySelector(
-    '[data-mode="classic"]'
-  )?.classList.add("active");
-
-  updateSummary();
-
-}
-
-/* =====================================================
-   EXPORT SETTINGS FOR THE RACING ENGINE
-===================================================== */
-
-window.KeystrikeRaceSettings = {
-
-  get() {
-
-    return {
-      game_mode: selectedMode,
-      text_mode: selectedText,
-      time_limit: selectedTime,
-      max_players: selectedPlayers,
-      custom_passage:
-        $("ksMpCustomPassage")?.value.trim() || null
-    };
-
-  }
-
-};
-
-/* =====================================================
-   INITIALIZE
-===================================================== */
-
-if (document.readyState === "loading") {
-
-  document.addEventListener(
-    "DOMContentLoaded",
-    buildRoomSettings
-  );
-
-} else {
-
-  buildRoomSettings();
-
-}
-
-console.log(
-  "🎮 KEYSTRIKE MULTIPLAYER UI READY"
-);
-
+  console.log("🎮 KEYSTRIKE MULTIPLAYER UI FIX LOADED");
 })();
