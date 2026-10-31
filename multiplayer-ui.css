@@ -1236,3 +1236,26 @@
     animation: none;
   }
 }
+/* ==========================================
+   MULTIPLAYER LOBBY — PLAYER CARD SPACING
+========================================== */
+
+#lobbyPlayers {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 20px !important;
+  align-items: stretch;
+}
+
+#lobbyPlayers .lobby-player-card {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+@media (max-width: 650px) {
+  #lobbyPlayers {
+    grid-template-columns: 1fr !important;
+    gap: 14px !important;
+  }
+}
