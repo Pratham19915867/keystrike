@@ -1,318 +1,466 @@
 "use strict";
 
 /*
-==========================================
- KEYSTRIKE V5
- ROOM PRESENCE + MOBILE LEAVE FIX
+=====================================================
+ KEYSTRIKE V5 — ROOM PRESENCE V2
 
- - Heartbeat every 5 seconds
- - Detect disconnected players
- - Close room after inactivity
+ STABILITY IMPROVEMENTS
+
+ - 5-second heartbeat
+ - 60-second server disconnect grace period
+ - Automatic reconnect heartbeat
+ - Visibility recovery
+ - Room change protection
+ - No automatic leave on refresh
  - Mobile-friendly leave button
- - Does not modify existing typing tests
-==========================================
+ - Natural race finish keeps room active
+ - Explicit leave closes the room through phase4.js
+
+ Requires script.js and phase4.js.
+=====================================================
 */
 
 (() => {
 
-const $ = id => document.getElementById(id);
+  const $ = id => document.getElementById(id);
 
-const HEARTBEAT_INTERVAL = 5000;
-const CLEANUP_INTERVAL = 7000;
+  const HEARTBEAT_INTERVAL = 5000;
+  const CLEANUP_INTERVAL = 7000;
+  const ROOM_CHECK_INTERVAL = 1000;
 
-let trackedRoomId = null;
-let heartbeatBusy = false;
-let cleanupBusy = false;
+  let trackedRoomId = null;
 
-function getRoom() {
-  return typeof mpRoom !== "undefined"
-    ? mpRoom
-    : null;
-}
+  let heartbeatBusy = false;
+  let cleanupBusy = false;
 
-function getUser() {
-  return typeof currentUser !== "undefined"
-    ? currentUser
-    : null;
-}
+  let heartbeatRoomId = null;
+  let cleanupRoomId = null;
 
-function getClient() {
-  return typeof db !== "undefined"
-    ? db
-    : null;
-}
+  let lastHeartbeatAt = 0;
+  let lastCleanupAt = 0;
 
-/* ======================================
-   ROOM HEARTBEAT
-====================================== */
+  let initialized = false;
 
-async function sendHeartbeat() {
-  const room = getRoom();
-  const user = getUser();
-  const client = getClient();
+  /* =====================================================
+     GLOBAL STATE ACCESS
+  ===================================================== */
 
-  if (
-    !room?.id ||
-    !user ||
-    !client ||
-    heartbeatBusy ||
-    room.status === "closed"
-  ) return;
-
-  heartbeatBusy = true;
-
-  try {
-    const { data, error } = await client.rpc(
-      "ks_room_heartbeat",
-      {
-        target_room_id: room.id
-      }
-    );
-
-    if (error) throw error;
-
-    if (data === false) {
-      console.warn(
-        "KEYSTRIKE: Room membership no longer active"
-      );
-    }
-
-  } catch (error) {
-    console.warn(
-      "KEYSTRIKE heartbeat:",
-      error.message
-    );
-
-  } finally {
-    heartbeatBusy = false;
+  function getRoom() {
+    return typeof mpRoom !== "undefined"
+      ? mpRoom
+      : null;
   }
-}
 
-/* ======================================
-   DISCONNECT CLEANUP
-====================================== */
-
-async function checkDisconnectedPlayers() {
-  const room = getRoom();
-  const client = getClient();
-
-  if (
-    !room?.id ||
-    !getUser() ||
-    !client ||
-    cleanupBusy ||
-    room.status === "closed"
-  ) return;
-
-  cleanupBusy = true;
-
-  const roomId = room.id;
-
-  try {
-    const { data, error } = await client.rpc(
-      "ks_cleanup_disconnected_room",
-      {
-        target_room_id: roomId
-      }
-    );
-
-    if (error) throw error;
-
-    if (data === true) {
-      console.log(
-        "KEYSTRIKE: Room closed because a player disconnected"
-      );
-
-      if (
-        getRoom()?.id === roomId &&
-        typeof mpRefresh === "function"
-      ) {
-        await mpRefresh();
-      }
-    }
-
-  } catch (error) {
-    console.warn(
-      "KEYSTRIKE cleanup:",
-      error.message
-    );
-
-  } finally {
-    cleanupBusy = false;
+  function getUser() {
+    return typeof currentUser !== "undefined"
+      ? currentUser
+      : null;
   }
-}
 
-/* ======================================
-   MOBILE LEAVE BUTTON
-====================================== */
+  function getClient() {
+    return typeof db !== "undefined"
+      ? db
+      : null;
+  }
 
-function createMobileLeaveButton() {
-  if ($("ksMobileLeaveButton")) return;
-
-  const button = document.createElement("button");
-
-  button.id = "ksMobileLeaveButton";
-
-  button.type = "button";
-
-  button.textContent = "🚪 LEAVE ROOM";
-
-  button.style.cssText = `
-    position: fixed;
-    bottom: 20px;
-    right: 20px;
-    z-index: 9990;
-    padding: 14px 20px;
-    border: 1px solid #ff6868;
-    border-radius: 12px;
-    background: #dc3545;
-    color: #ffffff;
-    font-size: 13px;
-    font-weight: 900;
-    cursor: pointer;
-    box-shadow: 0 8px 30px #0007;
-    display: none;
-    max-width: calc(100vw - 40px);
-  `;
-
-  button.addEventListener("click", () => {
-    const room = getRoom();
-
-    if (!room) return;
-
-    const confirmed = confirm(
-      "Leave this room?\n\n" +
-      "The room will close for ALL players."
-    );
-
-    if (!confirmed) return;
-
-    /*
-      Use the existing LEAVE button.
-
-      phase4.js already intercepts that click
-      and calls leave_race_room.
-    */
-
-    const originalButton = $("leaveRoomButton");
-
-    if (originalButton && !originalButton.disabled) {
-      originalButton.click();
-    } else {
-      alert(
-        "Leave is temporarily unavailable. Please try again."
-      );
-    }
-  });
-
-  document.body.appendChild(button);
-}
-
-/* ======================================
-   BUTTON VISIBILITY
-====================================== */
-
-function updateMobileLeaveButton() {
-  const button = $("ksMobileLeaveButton");
-
-  if (!button) return;
-
-  const room = getRoom();
-
-  const mobile =
-    window.innerWidth <= 768;
-
-  const activeRoom =
-    Boolean(
+  function isActiveRoom(room) {
+    return Boolean(
       room?.id &&
       room.status !== "closed"
     );
-
-  button.style.display =
-    mobile && activeRoom
-      ? "block"
-      : "none";
-}
-
-/* ======================================
-   PRESENCE LOOP
-====================================== */
-
-function presenceLoop() {
-  const room = getRoom();
-
-  if (!room?.id || !getUser()) {
-    trackedRoomId = null;
-    updateMobileLeaveButton();
-    return;
   }
 
-  if (trackedRoomId !== room.id) {
-    trackedRoomId = room.id;
+  function sameRoom(roomId) {
+    const room = getRoom();
 
-    // Mark presence as soon as the room loads.
-    sendHeartbeat();
+    return Boolean(
+      room?.id === roomId &&
+      room.status !== "closed"
+    );
   }
 
-  updateMobileLeaveButton();
-}
+  /* =====================================================
+     ROOM HEARTBEAT
+  ===================================================== */
 
-/* ======================================
-   INITIALIZE
-====================================== */
+  async function sendHeartbeat(force = false) {
+    const room = getRoom();
+    const user = getUser();
+    const client = getClient();
 
-function initializePresenceFix() {
-  createMobileLeaveButton();
+    if (
+      !isActiveRoom(room) ||
+      !user ||
+      !client
+    ) return;
 
-  setInterval(
-    presenceLoop,
-    1000
-  );
+    const roomId = room.id;
+    const now = Date.now();
 
-  setInterval(() => {
-    if (getRoom() && getUser()) {
-      sendHeartbeat();
+    if (
+      heartbeatBusy &&
+      heartbeatRoomId === roomId
+    ) return;
+
+    if (
+      !force &&
+      now - lastHeartbeatAt < 3500
+    ) return;
+
+    /*
+     * Do not overlap requests.
+     *
+     * A request started for an old room may finish
+     * after another room has been opened.
+     */
+    if (heartbeatBusy) return;
+
+    heartbeatBusy = true;
+    heartbeatRoomId = roomId;
+
+    try {
+      const { data, error } = await client.rpc(
+        "ks_room_heartbeat",
+        {
+          target_room_id: roomId
+        }
+      );
+
+      if (error) throw error;
+
+      if (!sameRoom(roomId)) return;
+
+      if (data === false) {
+        console.warn(
+          "KEYSTRIKE: Room membership no longer active"
+        );
+
+        /*
+         * Membership may have been removed because
+         * the server closed the room.
+         */
+        if (typeof mpRefresh === "function") {
+          await mpRefresh();
+        }
+
+        return;
+      }
+
+      lastHeartbeatAt = Date.now();
+
+    } catch (error) {
+      if (!sameRoom(roomId)) return;
+
+      console.warn(
+        "KEYSTRIKE room heartbeat:",
+        error.message
+      );
+
+    } finally {
+      heartbeatBusy = false;
+      heartbeatRoomId = null;
     }
-  }, HEARTBEAT_INTERVAL);
+  }
 
-  setInterval(() => {
-    if (getRoom() && getUser()) {
-      checkDisconnectedPlayers();
-    }
-  }, CLEANUP_INTERVAL);
+  /* =====================================================
+     DISCONNECTED PLAYER CLEANUP
+  ===================================================== */
 
-  window.addEventListener(
-    "resize",
-    updateMobileLeaveButton
-  );
+  async function checkDisconnectedPlayers(force = false) {
+    const room = getRoom();
+    const user = getUser();
+    const client = getClient();
 
-  document.addEventListener(
-    "visibilitychange",
-    () => {
-      if (
-        document.visibilityState === "visible"
-      ) {
-        sendHeartbeat();
+    if (
+      !isActiveRoom(room) ||
+      !user ||
+      !client
+    ) return;
+
+    const roomId = room.id;
+    const now = Date.now();
+
+    if (cleanupBusy) return;
+
+    if (
+      !force &&
+      now - lastCleanupAt < 5000
+    ) return;
+
+    cleanupBusy = true;
+    cleanupRoomId = roomId;
+
+    try {
+      /*
+       * Refresh our own heartbeat before checking
+       * whether another player has disconnected.
+       */
+      await sendHeartbeat();
+
+      if (!sameRoom(roomId)) return;
+
+      const { data, error } = await client.rpc(
+        "ks_cleanup_disconnected_room",
+        {
+          target_room_id: roomId
+        }
+      );
+
+      if (error) throw error;
+
+      if (!sameRoom(roomId)) return;
+
+      lastCleanupAt = Date.now();
+
+      if (data === true) {
+        console.log(
+          "KEYSTRIKE: Room closed after disconnected player timeout"
+        );
 
         if (typeof mpRefresh === "function") {
-          mpRefresh();
+          await mpRefresh();
         }
       }
+
+    } catch (error) {
+      if (!sameRoom(roomId)) return;
+
+      console.warn(
+        "KEYSTRIKE disconnect cleanup:",
+        error.message
+      );
+
+    } finally {
+      cleanupBusy = false;
+      cleanupRoomId = null;
     }
-  );
+  }
 
-  console.log(
-    "🟢 KEYSTRIKE ROOM PRESENCE READY"
-  );
-}
+  /* =====================================================
+     MOBILE LEAVE BUTTON
+  ===================================================== */
 
-if (document.readyState === "loading") {
-  document.addEventListener(
-    "DOMContentLoaded",
-    initializePresenceFix
-  );
-} else {
-  initializePresenceFix();
-}
+  function createMobileLeaveButton() {
+    if ($("ksMobileLeaveButton")) return;
+
+    const button = document.createElement("button");
+
+    button.id = "ksMobileLeaveButton";
+    button.type = "button";
+
+    button.textContent = "🚪 LEAVE ROOM";
+
+    button.setAttribute(
+      "aria-label",
+      "Leave and close multiplayer room"
+    );
+
+    button.style.cssText = `
+      position: fixed;
+      bottom: max(18px, env(safe-area-inset-bottom));
+      right: 16px;
+      z-index: 9990;
+      padding: 13px 18px;
+      border: 1px solid #ff6868;
+      border-radius: 12px;
+      background: linear-gradient(
+        135deg,
+        #e34753,
+        #b92539
+      );
+      color: #ffffff;
+      font-family: Inter, sans-serif;
+      font-size: 12px;
+      font-weight: 900;
+      letter-spacing: .3px;
+      cursor: pointer;
+      box-shadow: 0 8px 30px rgba(0,0,0,.45);
+      display: none;
+      max-width: calc(100vw - 32px);
+    `;
+
+    button.addEventListener("click", () => {
+      const room = getRoom();
+
+      if (!isActiveRoom(room)) return;
+
+      const confirmed = confirm(
+        "Leave this multiplayer room?\n\n" +
+        "⚠ The room will close for ALL players."
+      );
+
+      if (!confirmed) return;
+
+      /*
+       * phase4.js handles explicit leave through
+       * the original leave button.
+       *
+       * Do not call the RPC from two places.
+       */
+      const originalButton = $("leaveRoomButton");
+
+      if (
+        originalButton &&
+        !originalButton.disabled
+      ) {
+        originalButton.click();
+      } else {
+        alert(
+          "Leave is temporarily unavailable. Please try again."
+        );
+      }
+    });
+
+    document.body.appendChild(button);
+  }
+
+  /* =====================================================
+     MOBILE LEAVE VISIBILITY
+  ===================================================== */
+
+  function updateMobileLeaveButton() {
+    const button = $("ksMobileLeaveButton");
+
+    if (!button) return;
+
+    const room = getRoom();
+
+    const mobile =
+      window.innerWidth <= 768;
+
+    const active =
+      isActiveRoom(room);
+
+    button.style.display =
+      mobile && active
+        ? "block"
+        : "none";
+  }
+
+  /* =====================================================
+     ROOM TRACKING
+  ===================================================== */
+
+  function presenceLoop() {
+    const room = getRoom();
+    const user = getUser();
+
+    if (
+      !isActiveRoom(room) ||
+      !user
+    ) {
+      trackedRoomId = null;
+      updateMobileLeaveButton();
+      return;
+    }
+
+    if (trackedRoomId !== room.id) {
+      trackedRoomId = room.id;
+
+      lastHeartbeatAt = 0;
+      lastCleanupAt = 0;
+
+      sendHeartbeat(true);
+    }
+
+    updateMobileLeaveButton();
+  }
+
+  /* =====================================================
+     RECONNECT RECOVERY
+  ===================================================== */
+
+  function recoverConnection() {
+    const room = getRoom();
+
+    if (!isActiveRoom(room)) return;
+
+    console.log(
+      "KEYSTRIKE: Recovering multiplayer connection"
+    );
+
+    sendHeartbeat(true);
+
+    if (typeof mpRefresh === "function") {
+      mpRefresh();
+    }
+  }
+
+  /* =====================================================
+     INITIALIZATION
+  ===================================================== */
+
+  function initializePresenceFix() {
+    if (initialized) return;
+
+    initialized = true;
+
+    createMobileLeaveButton();
+
+    setInterval(
+      presenceLoop,
+      ROOM_CHECK_INTERVAL
+    );
+
+    setInterval(() => {
+      if (
+        isActiveRoom(getRoom()) &&
+        getUser()
+      ) {
+        sendHeartbeat();
+      }
+    }, HEARTBEAT_INTERVAL);
+
+    setInterval(() => {
+      if (
+        isActiveRoom(getRoom()) &&
+        getUser()
+      ) {
+        checkDisconnectedPlayers();
+      }
+    }, CLEANUP_INTERVAL);
+
+    window.addEventListener(
+      "online",
+      recoverConnection
+    );
+
+    window.addEventListener(
+      "focus",
+      recoverConnection
+    );
+
+    window.addEventListener(
+      "resize",
+      updateMobileLeaveButton
+    );
+
+    document.addEventListener(
+      "visibilitychange",
+      () => {
+        if (
+          document.visibilityState === "visible"
+        ) {
+          recoverConnection();
+        }
+      }
+    );
+
+    presenceLoop();
+
+    console.log(
+      "🟢 KEYSTRIKE ROOM PRESENCE V2 READY"
+    );
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener(
+      "DOMContentLoaded",
+      initializePresenceFix,
+      { once: true }
+    );
+  } else {
+    initializePresenceFix();
+  }
 
 })();
