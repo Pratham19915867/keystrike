@@ -2,8 +2,8 @@
 
 /*
 =====================================================
- KEYSTRIKE V5 — CUSTOM THEME STUDIO
- Compatible with existing script.js settings.
+ KEYSTRIKE V5 — CUSTOM THEME STUDIO V2
+ Fixed Settings integration and theme persistence.
 =====================================================
 */
 
@@ -92,99 +92,129 @@
     }
   };
 
-  const CUSTOM_DEFAULT = {
+  const DEFAULT_CUSTOM = {
     ...PRESETS.cyber,
     glow: 55,
     fontSize: 29,
     animations: true
   };
 
-  let savedState = null;
+  const $ = id => document.getElementById(id);
+
+  let stored = null;
 
   try {
-    savedState = JSON.parse(
+    stored = JSON.parse(
       localStorage.getItem(STORAGE_KEY) || "null"
     );
   } catch {
-    savedState = null;
+    stored = null;
   }
 
+  const existingSettings = (() => {
+    try {
+      return JSON.parse(
+        localStorage.getItem("ks_v3_settings") || "{}"
+      );
+    } catch {
+      return {};
+    }
+  })();
+
   let state = {
-    preset: savedState?.preset || "cyber",
+    preset:
+      stored?.preset ||
+      existingSettings.theme ||
+      "cyber",
+
     colors: {
-      ...CUSTOM_DEFAULT,
-      ...(savedState?.colors || {})
+      ...DEFAULT_CUSTOM,
+      ...(stored?.colors || {})
     }
   };
 
-  const $ = id => document.getElementById(id);
-
-  const root = document.documentElement;
-
-  function validHex(value) {
-    return /^#[0-9a-fA-F]{6}$/.test(value);
+  if (
+    state.preset !== "custom" &&
+    !PRESETS[state.preset]
+  ) {
+    state.preset = "cyber";
   }
 
-  function hexToRGB(hex) {
-    const normalized = hex.replace("#", "");
+  function validHex(value) {
+    return (
+      typeof value === "string" &&
+      /^#[0-9a-f]{6}$/i.test(value)
+    );
+  }
+
+  function rgb(hex) {
+    const value = hex.replace("#", "");
 
     return [
-      parseInt(normalized.slice(0, 2), 16),
-      parseInt(normalized.slice(2, 4), 16),
-      parseInt(normalized.slice(4, 6), 16)
+      parseInt(value.slice(0, 2), 16),
+      parseInt(value.slice(2, 4), 16),
+      parseInt(value.slice(4, 6), 16)
     ];
   }
 
   function rgba(hex, alpha) {
-    const [r, g, b] = hexToRGB(hex);
+    const [r, g, b] = rgb(hex);
 
     return `rgba(${r},${g},${b},${alpha})`;
   }
 
-  function save() {
+  function saveState() {
     try {
       localStorage.setItem(
         STORAGE_KEY,
         JSON.stringify(state)
       );
     } catch (error) {
-      console.warn("Theme storage:", error);
+      console.warn("Theme save:", error);
     }
   }
 
-  function getCurrentColors() {
+  function currentColors() {
     if (state.preset === "custom") {
-      return state.colors;
+      return {
+        ...DEFAULT_CUSTOM,
+        ...state.colors
+      };
     }
 
     return {
-      ...CUSTOM_DEFAULT,
+      ...DEFAULT_CUSTOM,
       ...(PRESETS[state.preset] || PRESETS.cyber)
     };
   }
 
-  function applyColors() {
-    const colors = getCurrentColors();
+  function applyTheme() {
+    const colors = currentColors();
+
+    const root = document.documentElement;
+    const body = document.body;
+
+    if (!body) return;
 
     const primary = validHex(colors.primary)
       ? colors.primary
-      : CUSTOM_DEFAULT.primary;
+      : DEFAULT_CUSTOM.primary;
 
     const accent = validHex(colors.accent)
       ? colors.accent
-      : CUSTOM_DEFAULT.accent;
+      : DEFAULT_CUSTOM.accent;
 
     const background = validHex(colors.background)
       ? colors.background
-      : CUSTOM_DEFAULT.background;
+      : DEFAULT_CUSTOM.background;
 
     const surface = validHex(colors.surface)
       ? colors.surface
-      : CUSTOM_DEFAULT.surface;
+      : DEFAULT_CUSTOM.surface;
 
     const keyboard = validHex(colors.keyboard)
       ? colors.keyboard
-      : CUSTOM_DEFAULT.keyboard;
+      : DEFAULT_CUSTOM.keyboard;
 
     const glow = Math.max(
       0,
@@ -192,13 +222,9 @@
     );
 
     const fontSize = Math.max(
-      18,
+      17,
       Math.min(42, Number(colors.fontSize) || 29)
     );
-
-    const animations = colors.animations !== false;
-
-    document.body.dataset.themeStudio = state.preset;
 
     root.style.setProperty(
       "--ks-studio-primary",
@@ -226,26 +252,6 @@
     );
 
     root.style.setProperty(
-      "--ks-studio-glow",
-      String(glow / 100)
-    );
-
-    root.style.setProperty(
-      "--ks-studio-primary-rgb",
-      hexToRGB(primary).join(",")
-    );
-
-    root.style.setProperty(
-      "--ks-studio-accent-rgb",
-      hexToRGB(accent).join(",")
-    );
-
-    root.style.setProperty(
-      "--ks-studio-keyboard-rgb",
-      hexToRGB(keyboard).join(",")
-    );
-
-    root.style.setProperty(
       "--ks-studio-primary-glow",
       rgba(primary, glow / 300)
     );
@@ -256,38 +262,47 @@
     );
 
     root.style.setProperty(
+      "--ks-studio-keyboard-rgb",
+      rgb(keyboard).join(",")
+    );
+
+    root.style.setProperty(
       "--font-size",
       fontSize + "px"
     );
 
-    document.body.classList.toggle(
+    body.dataset.themeStudio = state.preset;
+
+    body.classList.toggle(
       "ks-studio-no-animation",
-      !animations
+      colors.animations === false
     );
 
     /*
-     * Existing themes use body[data-theme].
-     * Preserve those theme names for compatibility.
+     * Keep base theme compatible with script.js.
+     * Custom uses Cyber as its underlying legacy theme.
      */
-    if (PRESETS[state.preset]) {
-      document.body.dataset.theme = state.preset;
+    const legacyTheme =
+      state.preset === "custom"
+        ? "cyber"
+        : state.preset;
+
+    if (body.dataset.theme !== legacyTheme) {
+      body.dataset.theme = legacyTheme;
     }
 
     updatePreview();
   }
 
   function updatePreview() {
-    const colors = getCurrentColors();
-
     const preview = $("ksThemeLivePreview");
 
     if (!preview) return;
 
-    preview.style.background =
-      colors.background;
+    const colors = currentColors();
 
-    preview.style.borderColor =
-      colors.primary;
+    preview.style.background = colors.background;
+    preview.style.borderColor = colors.primary;
 
     const title = preview.querySelector(
       ".ks-theme-preview-title"
@@ -295,16 +310,6 @@
 
     if (title) {
       title.style.color = colors.primary;
-    }
-
-    const button = preview.querySelector(
-      ".ks-theme-preview-button"
-    );
-
-    if (button) {
-      button.style.background = colors.primary;
-      button.style.boxShadow =
-        `0 0 25px ${rgba(colors.primary, .25)}`;
     }
 
     const card = preview.querySelector(
@@ -316,66 +321,53 @@
       card.style.borderColor = colors.accent;
     }
 
-    const keys = preview.querySelectorAll(
-      ".ks-theme-preview-key"
+    const button = preview.querySelector(
+      ".ks-theme-preview-button"
     );
 
-    keys.forEach(key => {
-      key.style.borderColor = colors.keyboard;
+    if (button) {
+      button.style.background = colors.primary;
+
+      button.style.boxShadow =
+        `0 0 25px ${rgba(colors.primary, .25)}`;
+    }
+
+    preview.querySelectorAll(
+      ".ks-theme-preview-key"
+    ).forEach(key => {
       key.style.color = colors.keyboard;
+      key.style.borderColor = colors.keyboard;
     });
   }
 
-  function createPresetButtons() {
-    return Object.entries(PRESETS)
-      .map(([id, preset]) => `
-        <button
-          type="button"
-          class="ks-theme-preset"
-          data-ks-preset="${id}"
-        >
-          <span class="ks-theme-preset-icon">
-            ${preset.icon}
-          </span>
-
-          <strong>${preset.label}</strong>
-
-          <span
-            class="ks-theme-preset-color"
-            style="background:${preset.primary}"
-          ></span>
-        </button>
-      `)
-      .join("");
-  }
-
-  function createColorControl(
-    key,
-    label,
-    description
-  ) {
+  function colorRow(key, title, description) {
     return `
       <label class="ks-theme-control">
-
         <span>
-          <strong>${label}</strong>
+          <strong>${title}</strong>
           <small>${description}</small>
         </span>
 
         <input
           type="color"
           data-ks-color="${key}"
-          value="${CUSTOM_DEFAULT[key]}"
+          value="${DEFAULT_CUSTOM[key]}"
         >
-
       </label>
     `;
   }
 
   function buildStudio() {
-    const panel = $("settingsPanel");
+    /*
+     * Important fix:
+     * The real Settings scroll area is .settings-scroll,
+     * NOT #settingsPanel itself.
+     */
+    const scrollArea = document.querySelector(
+      "#settingsPanel .settings-scroll"
+    );
 
-    if (!panel || $("ksThemeStudio")) return;
+    if (!scrollArea || $("ksThemeStudio")) return;
 
     const studio = document.createElement("section");
 
@@ -386,17 +378,34 @@
       <div class="ks-theme-heading">
         <span>🎨 PERSONALIZATION</span>
         <h2>Custom Theme Studio</h2>
-        <p>
-          Design your own KEYSTRIKE experience.
-        </p>
+        <p>Build your perfect typing arena.</p>
       </div>
 
       <div class="ks-theme-section-title">
-        PREMIUM THEMES
+        CHOOSE A THEME
       </div>
 
       <div class="ks-theme-preset-grid">
-        ${createPresetButtons()}
+        ${Object.entries(PRESETS).map(
+          ([id, preset]) => `
+            <button
+              type="button"
+              class="ks-theme-preset"
+              data-ks-preset="${id}"
+            >
+              <span class="ks-theme-preset-icon">
+                ${preset.icon}
+              </span>
+
+              <strong>${preset.label}</strong>
+
+              <span
+                class="ks-theme-preset-color"
+                style="background:${preset.primary}"
+              ></span>
+            </button>
+          `
+        ).join("")}
       </div>
 
       <button
@@ -404,49 +413,46 @@
         id="ksThemeCustomButton"
         class="ks-theme-custom-button"
       >
-        ✨ CREATE CUSTOM THEME
+        ✨ CREATE YOUR OWN THEME
       </button>
 
       <div class="ks-theme-section-title">
-        CUSTOM COLORS
+        CUSTOMIZE COLORS
       </div>
 
       <div class="ks-theme-controls">
-
-        ${createColorControl(
+        ${colorRow(
           "primary",
-          "Primary Color",
-          "Main interface highlights"
+          "Primary",
+          "Buttons and highlights"
         )}
 
-        ${createColorControl(
+        ${colorRow(
           "accent",
-          "Accent Color",
-          "Secondary glow and borders"
+          "Accent",
+          "Borders and secondary effects"
         )}
 
-        ${createColorControl(
+        ${colorRow(
           "background",
           "Background",
-          "Main website background"
+          "Website background"
         )}
 
-        ${createColorControl(
+        ${colorRow(
           "surface",
-          "Card Background",
-          "Panels and surfaces"
+          "Cards",
+          "Panel backgrounds"
         )}
 
-        ${createColorControl(
+        ${colorRow(
           "keyboard",
           "Keyboard RGB",
           "Keyboard lighting"
         )}
-
       </div>
 
       <div class="ks-theme-range-group">
-
         <div class="ks-theme-range-heading">
           <strong>✨ Glow Intensity</strong>
           <span id="ksThemeGlowValue">55%</span>
@@ -457,13 +463,10 @@
           type="range"
           min="0"
           max="100"
-          value="55"
         >
-
       </div>
 
       <div class="ks-theme-range-group">
-
         <div class="ks-theme-range-heading">
           <strong>🔤 Typing Font Size</strong>
           <span id="ksThemeFontValue">29px</span>
@@ -472,25 +475,18 @@
         <input
           id="ksThemeFont"
           type="range"
-          min="18"
+          min="17"
           max="42"
-          value="29"
         >
-
       </div>
 
       <label class="ks-theme-animation-toggle">
-
-        <span>
-          ⚡ Theme Animations
-        </span>
+        <span>⚡ Theme Animations</span>
 
         <input
           id="ksThemeAnimations"
           type="checkbox"
-          checked
         >
-
       </label>
 
       <div class="ks-theme-section-title">
@@ -501,7 +497,6 @@
         class="ks-theme-live-preview"
         id="ksThemeLivePreview"
       >
-
         <div class="ks-theme-preview-title">
           KEYSTRIKE V5
         </div>
@@ -521,45 +516,48 @@
         <div class="ks-theme-preview-button">
           START TYPING →
         </div>
-
       </div>
 
       <div class="ks-theme-actions">
-
         <button
           type="button"
-          id="ksThemeSave"
           class="ks-theme-save"
+          id="ksThemeSave"
         >
-          💾 SAVE THEME
+          💾 SAVE
         </button>
 
         <button
           type="button"
-          id="ksThemeReset"
           class="ks-theme-reset"
+          id="ksThemeReset"
         >
           ↺ RESET
         </button>
-
       </div>
 
-      <div
+      <p
         id="ksThemeMessage"
         class="ks-theme-message"
         aria-live="polite"
-      ></div>
+      ></p>
     `;
 
-    panel.appendChild(studio);
+    const resetButton = $("resetSettings");
+
+    if (resetButton) {
+      resetButton.before(studio);
+    } else {
+      scrollArea.appendChild(studio);
+    }
 
     bindEvents();
     syncControls();
-    applyColors();
+    applyTheme();
   }
 
   function syncControls() {
-    const colors = getCurrentColors();
+    const colors = currentColors();
 
     document.querySelectorAll(
       "[data-ks-color]"
@@ -571,20 +569,25 @@
       }
     });
 
-    $("ksThemeGlow").value =
-      colors.glow ?? 55;
+    const glow = colors.glow ?? 55;
+    const fontSize = colors.fontSize ?? 29;
 
-    $("ksThemeGlowValue").textContent =
-      (colors.glow ?? 55) + "%";
+    if ($("ksThemeGlow")) {
+      $("ksThemeGlow").value = glow;
+      $("ksThemeGlowValue").textContent =
+        glow + "%";
+    }
 
-    $("ksThemeFont").value =
-      colors.fontSize ?? 29;
+    if ($("ksThemeFont")) {
+      $("ksThemeFont").value = fontSize;
+      $("ksThemeFontValue").textContent =
+        fontSize + "px";
+    }
 
-    $("ksThemeFontValue").textContent =
-      (colors.fontSize ?? 29) + "px";
-
-    $("ksThemeAnimations").checked =
-      colors.animations !== false;
+    if ($("ksThemeAnimations")) {
+      $("ksThemeAnimations").checked =
+        colors.animations !== false;
+    }
 
     document.querySelectorAll(
       "[data-ks-preset]"
@@ -595,7 +598,7 @@
       );
     });
 
-    $("ksThemeCustomButton").classList.toggle(
+    $("ksThemeCustomButton")?.classList.toggle(
       "active",
       state.preset === "custom"
     );
@@ -606,26 +609,23 @@
 
     state.preset = id;
 
-    /*
-     * Keep custom colors saved while browsing presets.
-     */
-    save();
+    saveState();
     syncControls();
-    applyColors();
+    applyTheme();
   }
 
   function activateCustom() {
     if (state.preset !== "custom") {
       state.colors = {
-        ...getCurrentColors()
+        ...currentColors()
       };
     }
 
     state.preset = "custom";
 
-    save();
+    saveState();
     syncControls();
-    applyColors();
+    applyTheme();
   }
 
   function updateCustom(key, value) {
@@ -636,7 +636,8 @@
     state.colors[key] = value;
 
     syncControls();
-    applyColors();
+    applyTheme();
+    saveState();
   }
 
   function bindEvents() {
@@ -697,14 +698,10 @@
     $("ksThemeSave").addEventListener(
       "click",
       () => {
-        save();
+        saveState();
 
         $("ksThemeMessage").textContent =
           "✓ Theme saved successfully!";
-
-        setTimeout(() => {
-          $("ksThemeMessage").textContent = "";
-        }, 3000);
       }
     );
 
@@ -714,13 +711,13 @@
         state = {
           preset: "cyber",
           colors: {
-            ...CUSTOM_DEFAULT
+            ...DEFAULT_CUSTOM
           }
         };
 
-        save();
+        saveState();
         syncControls();
-        applyColors();
+        applyTheme();
 
         $("ksThemeMessage").textContent =
           "Default theme restored.";
@@ -728,10 +725,7 @@
     );
   }
 
-  /*
-   * Synchronize old settings theme buttons.
-   */
-  function bindExistingThemes() {
+  function bindLegacyThemes() {
     document.querySelectorAll(
       ".theme-choice"
     ).forEach(button => {
@@ -745,45 +739,17 @@
     });
   }
 
-  /*
-   * script.js owns --font-size and body[data-theme].
-   * Re-apply studio settings after existing settings
-   * updates, without replacing any original functions.
-   */
-  function observeThemeChanges() {
-    const observer = new MutationObserver(() => {
-      if (!document.body) return;
-
-      if (
-        state.preset !== "custom" &&
-        PRESETS[document.body.dataset.theme] &&
-        document.body.dataset.theme !== state.preset
-      ) {
-        state.preset = document.body.dataset.theme;
-        save();
-        syncControls();
-      }
-
-      applyColors();
-    });
-
-    observer.observe(document.body, {
-      attributes: true,
-      attributeFilter: ["data-theme"]
-    });
-  }
-
   function initialize() {
     buildStudio();
-    bindExistingThemes();
-    applyColors();
-    observeThemeChanges();
+    bindLegacyThemes();
+    applyTheme();
   }
 
   if (document.readyState === "loading") {
     document.addEventListener(
       "DOMContentLoaded",
-      initialize
+      initialize,
+      { once: true }
     );
   } else {
     initialize();
