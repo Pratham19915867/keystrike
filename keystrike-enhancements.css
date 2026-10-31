@@ -1,0 +1,264 @@
+/* ==========================================
+   KEYSTRIKE V5 — PREMIUM ENHANCEMENTS
+========================================== */
+
+/* Race passage viewport */
+
+#multiplayerPassage {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  max-height: 210px;
+  min-height: 135px;
+  overflow-y: auto;
+  overflow-x: hidden;
+
+  padding: 22px 24px;
+
+  font-family:
+    "JetBrains Mono",
+    "Fira Code",
+    Consolas,
+    monospace;
+
+  font-size: clamp(17px, 2vw, 24px);
+  line-height: 1.9;
+
+  letter-spacing: .3px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 16px;
+
+  background: rgba(7, 12, 23, .7);
+  color: #a1adbd;
+
+  scrollbar-width: thin;
+  scrollbar-color: #ff914d #111827;
+}
+
+#multiplayerPassage .correct {
+  color: #35e89a;
+}
+
+#multiplayerPassage .incorrect {
+  color: #ff626f;
+  background: rgba(255, 98, 111, .15);
+  border-radius: 3px;
+}
+
+#multiplayerInput {
+  display: block;
+  width: 100%;
+  min-height: 90px;
+
+  margin-top: 14px;
+  padding: 18px;
+
+  font-family:
+    "JetBrains Mono",
+    Consolas,
+    monospace;
+
+  font-size: 17px;
+  line-height: 1.7;
+
+  resize: vertical;
+
+  border: 1px solid rgba(255,255,255,.15);
+  border-radius: 13px;
+
+  background: rgba(5, 10, 20, .9);
+  color: #f3f7ff;
+
+  outline: none;
+}
+
+#multiplayerInput:focus {
+  border-color: #ff914d;
+  box-shadow: 0 0 0 3px rgba(255,145,77,.12);
+}
+
+/* Race tracks */
+
+#multiplayerTracks {
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+  width: 100%;
+}
+
+.multiplayer-track {
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid rgba(255,255,255,.09);
+  border-radius: 14px;
+  background: rgba(255,255,255,.035);
+}
+
+.multiplayer-racer-name {
+  display: block;
+  margin-bottom: 9px;
+  overflow-wrap: anywhere;
+}
+
+.multiplayer-track-line {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 99px;
+}
+
+.multiplayer-car {
+  position: absolute;
+  left: 0;
+  transition: transform .45s ease-out;
+  will-change: transform;
+}
+
+/* Social layout */
+
+#socialDashboard {
+  width: 100%;
+}
+
+#friendsList,
+#chatMessages,
+#playerSearchResults {
+  scrollbar-width: thin;
+  scrollbar-color: #ff914d #141b29;
+}
+
+.friend-card,
+.player-card,
+.friend-request-card {
+  border-radius: 13px;
+  transition:
+    border-color .2s ease,
+    background .2s ease,
+    transform .2s ease;
+}
+
+.friend-card:hover,
+.player-card:hover {
+  border-color: rgba(255,145,77,.35);
+  background: rgba(255,145,77,.05);
+  transform: translateY(-1px);
+}
+
+.chat-message-bubble {
+  max-width: min(90%, 500px);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+/* Room creation */
+
+#multiplayerHome {
+  width: 100%;
+}
+
+#ksMultiplayerSettings {
+  margin-bottom: 24px;
+}
+
+.ks-mp-settings-panel {
+  box-shadow: 0 20px 70px rgba(0,0,0,.18);
+}
+
+/* Mobile */
+
+@media (max-width: 768px) {
+
+  #multiplayerRace,
+  #multiplayerLobby,
+  #multiplayerHome,
+  #multiplayerResults {
+    width: 100%;
+    min-width: 0;
+  }
+
+  #multiplayerPassage {
+    max-height: 180px;
+    min-height: 125px;
+
+    padding: 15px;
+
+    font-size: 17px;
+    line-height: 1.75;
+  }
+
+  #multiplayerInput {
+    min-height: 85px;
+    font-size: 16px;
+    padding: 14px;
+  }
+
+  #multiplayerTracks {
+    gap: 9px;
+  }
+
+  .multiplayer-track {
+    padding: 10px;
+  }
+
+  .multiplayer-racer-name {
+    font-size: 12px;
+  }
+
+  .multiplayer-track-progress {
+    font-size: 11px;
+  }
+
+  #multiplayerLeaderboard {
+    width: 100%;
+  }
+
+  .multiplayer-leaderboard-item {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .ks-mp-mode-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .ks-mp-choice-group {
+    flex-wrap: wrap;
+  }
+
+  #socialDashboard {
+    min-width: 0;
+  }
+
+  .friend-card,
+  .player-card {
+    min-width: 0;
+  }
+
+  .chat-message-bubble {
+    max-width: 95%;
+  }
+}
+
+@media (max-width: 420px) {
+
+  #multiplayerPassage {
+    max-height: 155px;
+    font-size: 15px;
+    line-height: 1.7;
+  }
+
+  #multiplayerInput {
+    min-height: 75px;
+  }
+
+  .ks-mp-mode-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .multiplayer-leaderboard-wpm {
+    font-size: 11px;
+  }
+}
