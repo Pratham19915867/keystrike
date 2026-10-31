@@ -4,7 +4,7 @@
 ========================================== */
 
 .ks-mp-settings-panel {
-  margin-bottom: 25px;
+  min-width: 0;
   padding: 28px;
 
   background:
@@ -18,15 +18,42 @@
   border: 1px solid var(--border);
   border-radius: 18px;
 
-  box-shadow: 0 15px 45px rgba(0, 0, 0, .15);
+  box-shadow:
+    0 15px 45px rgba(0, 0, 0, .15);
 }
 
 .ks-mp-settings-heading {
-  margin-bottom: 28px;
+  margin-bottom: 25px;
+}
+
+.ks-mp-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+
+  color: var(--accent);
+
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 900;
+
+  letter-spacing: 1.8px;
+}
+
+.ks-mp-live-dot {
+  width: 7px;
+  height: 7px;
+
+  border-radius: 50%;
+
+  background: #75e6b0;
+
+  box-shadow:
+    0 0 12px rgba(117, 230, 176, .6);
 }
 
 .ks-mp-settings-heading h2 {
-  margin-top: 9px;
+  margin-top: 13px;
 
   font-size: 25px;
   font-weight: 900;
@@ -61,6 +88,47 @@
 }
 
 /* ==========================================
+   DESKTOP MULTIPLAYER LAYOUT
+========================================== */
+
+#multiplayerHome.ks-mp-enhanced-home {
+  display: grid;
+
+  grid-template-columns:
+    minmax(0, 1.35fr)
+    minmax(300px, .85fr);
+
+  align-items: start;
+
+  gap: 20px;
+}
+
+#multiplayerHome.ks-mp-enhanced-home
+#ksMultiplayerSettings {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+}
+
+#multiplayerHome.ks-mp-enhanced-home
+.ks-mp-create-card {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+#multiplayerHome.ks-mp-enhanced-home
+.ks-mp-join-card {
+  grid-column: 2;
+  grid-row: 2;
+}
+
+#multiplayerHome.ks-mp-enhanced-home
+.multiplayer-action-card {
+  min-width: 0;
+  height: auto;
+  align-self: start;
+}
+
+/* ==========================================
    GAME MODE CARDS
 ========================================== */
 
@@ -74,9 +142,10 @@
 }
 
 .ks-mp-mode-card {
-  min-height: 135px;
+  min-width: 0;
+  min-height: 125px;
 
-  padding: 18px 12px;
+  padding: 15px 8px;
 
   display: flex;
   flex-direction: column;
@@ -92,6 +161,7 @@
   border-radius: 13px;
 
   text-align: center;
+  cursor: pointer;
 
   transition: .2s ease;
 }
@@ -119,12 +189,14 @@
 }
 
 .ks-mp-mode-icon {
-  font-size: 29px;
+  font-size: 27px;
 }
 
 .ks-mp-mode-card strong {
   font-size: 10px;
   font-weight: 900;
+
+  overflow-wrap: anywhere;
 }
 
 .ks-mp-mode-card small {
@@ -157,6 +229,8 @@
   font-size: 11px;
   font-weight: 800;
 
+  cursor: pointer;
+
   transition: .2s ease;
 }
 
@@ -183,6 +257,10 @@
   margin-top: 15px;
 }
 
+.ks-mp-custom-wrapper[hidden] {
+  display: none !important;
+}
+
 .ks-mp-custom-input {
   width: 100%;
   min-height: 120px;
@@ -207,8 +285,23 @@
   border-color: var(--accent);
 }
 
+.ks-mp-character-count {
+  margin-top: 8px;
+
+  color: var(--muted);
+
+  font-family: var(--mono);
+  font-size: 10px;
+
+  text-align: right;
+}
+
+.ks-mp-count-invalid {
+  color: #ff7189;
+}
+
 /* ==========================================
-   ROOM SETTINGS SUMMARY
+   SETTINGS SUMMARY
 ========================================== */
 
 .ks-mp-settings-summary {
@@ -233,12 +326,315 @@
   font-weight: 800;
 
   text-align: center;
-
   line-height: 1.8;
 }
 
 /* ==========================================
-   MULTIPLAYER RACE VISUAL IMPROVEMENTS
+   CREATE ROOM CARD
+========================================== */
+
+.ks-mp-create-card {
+  position: relative;
+
+  overflow: hidden;
+
+  padding: 28px !important;
+
+  background:
+    radial-gradient(
+      ellipse at 100% 0,
+      rgba(101, 168, 255, .12),
+      transparent 58%
+    ),
+    var(--surface) !important;
+
+  border: 1px solid var(--border);
+
+  border-radius: 18px;
+}
+
+.ks-mp-create-card::before {
+  content: "";
+
+  position: absolute;
+
+  top: 0;
+  left: 20px;
+  right: 20px;
+
+  height: 2px;
+
+  background:
+    linear-gradient(
+      90deg,
+      transparent,
+      var(--accent),
+      transparent
+    );
+
+  opacity: .7;
+}
+
+.ks-mp-create-card h3 {
+  margin-top: 15px;
+
+  font-size: 24px;
+  font-weight: 900;
+
+  letter-spacing: -.5px;
+}
+
+.ks-mp-create-card > p {
+  color: var(--muted);
+
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.ks-mp-create-original-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  width: 56px;
+  height: 56px;
+
+  border-radius: 16px;
+
+  background: rgba(101, 168, 255, .09);
+
+  font-size: 28px;
+}
+
+/* ==========================================
+   LIVE RACE CONFIGURATION
+========================================== */
+
+.ks-mp-race-preview {
+  margin-top: 26px;
+
+  padding: 19px;
+
+  background: rgba(6, 10, 18, .48);
+
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+
+.ks-mp-preview-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  flex-wrap: wrap;
+  gap: 10px;
+
+  padding-bottom: 15px;
+
+  border-bottom: 1px solid var(--border);
+
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 900;
+
+  letter-spacing: .7px;
+}
+
+.ks-mp-preview-status {
+  color: #75e6b0;
+
+  font-size: 9px;
+}
+
+.ks-mp-preview-rows {
+  display: flex;
+  flex-direction: column;
+
+  gap: 0;
+}
+
+.ks-mp-preview-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  gap: 12px;
+
+  padding: 15px 0;
+
+  border-bottom:
+    1px solid rgba(255, 255, 255, .045);
+}
+
+.ks-mp-preview-row:last-child {
+  border-bottom: 0;
+
+  padding-bottom: 0;
+}
+
+.ks-mp-preview-row > span {
+  color: var(--muted);
+
+  font-size: 11px;
+}
+
+.ks-mp-preview-row > strong {
+  color: var(--text);
+
+  font-size: 11px;
+  font-weight: 900;
+
+  text-align: right;
+}
+
+/* ==========================================
+   PRIVATE ROOM BENEFITS
+========================================== */
+
+.ks-mp-room-benefits {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+
+  gap: 9px;
+
+  margin: 20px 0 15px;
+}
+
+.ks-mp-room-benefits span {
+  padding: 9px 11px;
+
+  background:
+    rgba(101, 168, 255, .07);
+
+  border: 1px solid var(--border);
+  border-radius: 9px;
+
+  color: var(--muted);
+
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.ks-mp-primary-create-button {
+  width: 100%;
+
+  min-height: 52px;
+
+  font-size: 12px;
+  font-weight: 900;
+
+  letter-spacing: .5px;
+}
+
+.ks-mp-create-feedback {
+  min-height: 19px;
+
+  margin-top: 10px;
+
+  color: var(--accent);
+
+  font-size: 11px;
+  text-align: center;
+}
+
+/* ==========================================
+   HOW IT WORKS
+========================================== */
+
+.ks-mp-how-it-works {
+  margin-top: 13px;
+
+  padding: 20px;
+
+  background:
+    rgba(101, 168, 255, .035);
+
+  border: 1px solid var(--border);
+  border-radius: 13px;
+}
+
+.ks-mp-how-title {
+  margin-bottom: 15px;
+
+  color: var(--accent);
+
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 900;
+
+  letter-spacing: 1.5px;
+}
+
+.ks-mp-how-step {
+  display: flex;
+  align-items: center;
+
+  gap: 12px;
+
+  padding: 9px 0;
+}
+
+.ks-mp-how-step span {
+  display: grid;
+  place-items: center;
+
+  flex: 0 0 29px;
+
+  width: 29px;
+  height: 29px;
+
+  background:
+    rgba(101, 168, 255, .1);
+
+  border: 1px solid var(--border);
+  border-radius: 8px;
+
+  color: var(--accent);
+
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.ks-mp-how-step p {
+  margin: 0;
+
+  color: var(--muted);
+
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+/* ==========================================
+   JOIN ROOM CARD
+========================================== */
+
+.ks-mp-join-card {
+  padding: 25px !important;
+
+  border-radius: 18px;
+}
+
+.ks-mp-join-card h3 {
+  font-size: 20px;
+}
+
+.ks-mp-join-card p {
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.ks-mp-join-card #joinRoomForm {
+  margin-top: 17px;
+}
+
+.ks-mp-join-card #joinRoomCode {
+  width: 100%;
+}
+
+/* ==========================================
+   MULTIPLAYER RACE VISUALS
 ========================================== */
 
 .multiplayer-race {
@@ -324,7 +720,8 @@
     0 0 20px var(--accent);
 
   animation:
-    ksCountdownPulse .8s ease-in-out infinite alternate;
+    ksCountdownPulse .8s ease-in-out
+    infinite alternate;
 }
 
 @keyframes ksCountdownPulse {
@@ -400,6 +797,8 @@
 }
 
 .multiplayer-leaderboard-item {
+  position: relative;
+
   transition: .2s;
 }
 
@@ -424,7 +823,6 @@
   content: "🏆";
 
   position: absolute;
-
   right: 15px;
 
   opacity: .15;
@@ -432,29 +830,298 @@
   font-size: 36px;
 }
 
-.multiplayer-leaderboard-item {
-  position: relative;
+/* ==========================================
+   FRIEND INVITE SYSTEM
+========================================== */
+
+.ks-invite-lobby-btn {
+  display: block;
+
+  width: 100%;
+
+  margin: 18px 0;
+  padding: 15px 20px;
+
+  border: 1px solid #ff9348;
+  border-radius: 12px;
+
+  background:
+    linear-gradient(
+      135deg,
+      #ff9348,
+      #ffbc68
+    );
+
+  color: #10131c;
+
+  font-weight: 900;
+  font-size: 13px;
+
+  cursor: pointer;
+
+  transition:
+    transform .2s,
+    box-shadow .2s;
+}
+
+.ks-invite-lobby-btn:hover {
+  transform: translateY(-2px);
+
+  box-shadow:
+    0 8px 30px #ff93483b;
+}
+
+.ks-invite-overlay {
+  position: fixed;
+  inset: 0;
+
+  z-index: 99999;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  padding: 20px;
+
+  background: #000b;
+
+  backdrop-filter: blur(10px);
+}
+
+.ks-invite-overlay[hidden] {
+  display: none !important;
+}
+
+.ks-invite-modal {
+  width: min(100%, 520px);
+  max-height: 85vh;
+
+  overflow-y: auto;
+
+  padding: 28px;
+
+  border: 1px solid #ff934866;
+  border-radius: 20px;
+
+  background: #151b27;
+  color: #fff;
+
+  box-shadow:
+    0 25px 100px #0009;
+}
+
+.ks-invite-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  gap: 15px;
+}
+
+.ks-invite-header h2 {
+  font-size: 21px;
+  margin: 0;
+}
+
+.ks-invite-close {
+  border: 0;
+
+  background: #ffffff12;
+  color: #fff;
+
+  padding: 10px 14px;
+
+  border-radius: 10px;
+
+  cursor: pointer;
+}
+
+.ks-invite-description {
+  color: #929dad;
+
+  font-size: 13px;
+
+  margin: 12px 0 24px;
+}
+
+.ks-invite-friend-list {
+  display: flex;
+  flex-direction: column;
+
+  gap: 10px;
+}
+
+.ks-invite-friend {
+  display: flex;
+  align-items: center;
+
+  gap: 14px;
+
+  padding: 13px;
+
+  background: #ffffff08;
+
+  border: 1px solid #ffffff12;
+  border-radius: 12px;
+}
+
+.ks-invite-avatar {
+  width: 44px;
+  height: 44px;
+
+  flex-shrink: 0;
+
+  display: grid;
+  place-items: center;
+
+  border-radius: 12px;
+
+  background: #ff934823;
+  color: #ff9348;
+
+  font-weight: 900;
+
+  overflow: hidden;
+}
+
+.ks-invite-avatar img {
+  width: 100%;
+  height: 100%;
+
+  object-fit: cover;
+}
+
+.ks-invite-friend-info {
+  flex: 1;
+  min-width: 0;
+
+  display: flex;
+  flex-direction: column;
+
+  gap: 5px;
+}
+
+.ks-invite-friend-info strong {
+  font-size: 13px;
+
+  overflow-wrap: anywhere;
+}
+
+.ks-invite-friend-info small {
+  color: #929dad;
+
+  font-size: 11px;
+}
+
+.ks-invite-send {
+  border: 0;
+  border-radius: 9px;
+
+  background: #ff9348;
+  color: #10131c;
+
+  font-weight: 900;
+  font-size: 11px;
+
+  padding: 11px 15px;
+
+  cursor: pointer;
+}
+
+.ks-invite-send:disabled {
+  opacity: .6;
+
+  cursor: default;
+}
+
+.ks-invite-empty {
+  padding: 30px 15px;
+
+  text-align: center;
+
+  color: #929dad;
+
+  font-size: 13px;
+}
+
+.ks-chat-join-race {
+  display: block;
+
+  margin: 10px 0;
+  padding: 11px 16px;
+
+  border: 1px solid #ff9348;
+  border-radius: 10px;
+
+  background: #ff9348;
+  color: #111722;
+
+  font-size: 12px;
+  font-weight: 900;
+
+  cursor: pointer;
+
+  transition: transform .2s;
+}
+
+.ks-chat-join-race:hover {
+  transform: translateY(-2px);
 }
 
 /* ==========================================
-   RESPONSIVE TABLET
+   TABLET
 ========================================== */
 
-@media (max-width: 1000px) {
+@media (max-width: 1100px) {
+  #multiplayerHome.ks-mp-enhanced-home {
+    grid-template-columns:
+      minmax(0, 1fr)
+      minmax(280px, .85fr);
+  }
 
   .ks-mp-mode-grid {
     grid-template-columns:
       repeat(3, minmax(0, 1fr));
   }
-
 }
 
 /* ==========================================
-   RESPONSIVE MOBILE
+   MOBILE LAYOUT
 ========================================== */
 
-@media (max-width: 650px) {
+@media (max-width: 800px) {
+  #multiplayerHome.ks-mp-enhanced-home {
+    grid-template-columns:
+      minmax(0, 1fr);
 
+    gap: 16px;
+  }
+
+  #multiplayerHome.ks-mp-enhanced-home
+  #ksMultiplayerSettings {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  #multiplayerHome.ks-mp-enhanced-home
+  .ks-mp-create-card {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  #multiplayerHome.ks-mp-enhanced-home
+  .ks-mp-join-card {
+    grid-column: 1;
+    grid-row: 3;
+  }
+
+  .ks-mp-mode-grid {
+    grid-template-columns:
+      repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 650px) {
   .ks-mp-settings-panel {
     padding: 18px;
   }
@@ -480,11 +1147,40 @@
 
   .ks-mp-choice {
     padding: 10px 12px;
+
     font-size: 10px;
   }
 
   .ks-mp-settings-summary {
     font-size: 9px;
+  }
+
+  .ks-mp-create-card {
+    padding: 20px !important;
+  }
+
+  .ks-mp-create-card h3 {
+    font-size: 22px;
+  }
+
+  .ks-mp-race-preview {
+    padding: 15px;
+  }
+
+  .ks-mp-preview-row {
+    padding: 13px 0;
+  }
+
+  .ks-mp-preview-row > strong {
+    font-size: 10px;
+  }
+
+  .ks-mp-room-benefits span {
+    font-size: 9px;
+  }
+
+  .ks-mp-how-it-works {
+    padding: 16px;
   }
 
   .multiplayer-track-line {
@@ -496,204 +1192,6 @@
     top: 7px;
   }
 
-}
-
-/* ==========================================
-   REDUCED MOTION
-========================================== */
-
-@media (prefers-reduced-motion: reduce) {
-
-  .ks-mp-mode-card,
-  .ks-mp-choice,
-  .multiplayer-car,
-  .multiplayer-leaderboard-item {
-    transition: none;
-  }
-
-  .multiplayer-countdown {
-    animation: none;
-  }
-
-}
-/* =========================================
-   KEYSTRIKE FRIEND INVITE SYSTEM
-========================================= */
-
-.ks-invite-lobby-btn {
-  display: block;
-  width: 100%;
-  margin: 18px 0;
-  padding: 15px 20px;
-  border: 1px solid #ff9348;
-  border-radius: 12px;
-  background: linear-gradient(
-    135deg,
-    #ff9348,
-    #ffbc68
-  );
-  color: #10131c;
-  font-weight: 900;
-  font-size: 13px;
-  cursor: pointer;
-  transition: transform .2s, box-shadow .2s;
-}
-
-.ks-invite-lobby-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 30px #ff93483b;
-}
-
-.ks-invite-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 99999;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-  background: #000b;
-  backdrop-filter: blur(10px);
-}
-
-.ks-invite-overlay[hidden] {
-  display: none !important;
-}
-
-.ks-invite-modal {
-  width: min(100%, 520px);
-  max-height: 85vh;
-  overflow-y: auto;
-  padding: 28px;
-  border: 1px solid #ff934866;
-  border-radius: 20px;
-  background: #151b27;
-  color: #fff;
-  box-shadow: 0 25px 100px #0009;
-}
-
-.ks-invite-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 15px;
-}
-
-.ks-invite-header h2 {
-  font-size: 21px;
-  margin: 0;
-}
-
-.ks-invite-close {
-  border: 0;
-  background: #ffffff12;
-  color: #fff;
-  padding: 10px 14px;
-  border-radius: 10px;
-  cursor: pointer;
-}
-
-.ks-invite-description {
-  color: #929dad;
-  font-size: 13px;
-  margin: 12px 0 24px;
-}
-
-.ks-invite-friend-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.ks-invite-friend {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 13px;
-  background: #ffffff08;
-  border: 1px solid #ffffff12;
-  border-radius: 12px;
-}
-
-.ks-invite-avatar {
-  width: 44px;
-  height: 44px;
-  flex-shrink: 0;
-  display: grid;
-  place-items: center;
-  border-radius: 12px;
-  background: #ff934823;
-  color: #ff9348;
-  font-weight: 900;
-  overflow: hidden;
-}
-
-.ks-invite-avatar img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.ks-invite-friend-info {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-
-.ks-invite-friend-info strong {
-  font-size: 13px;
-  overflow-wrap: anywhere;
-}
-
-.ks-invite-friend-info small {
-  color: #929dad;
-  font-size: 11px;
-}
-
-.ks-invite-send {
-  border: 0;
-  border-radius: 9px;
-  background: #ff9348;
-  color: #10131c;
-  font-weight: 900;
-  font-size: 11px;
-  padding: 11px 15px;
-  cursor: pointer;
-}
-
-.ks-invite-send:disabled {
-  opacity: .6;
-  cursor: default;
-}
-
-.ks-invite-empty {
-  padding: 30px 15px;
-  text-align: center;
-  color: #929dad;
-  font-size: 13px;
-}
-
-.ks-chat-join-race {
-  display: block;
-  margin: 10px 0;
-  padding: 11px 16px;
-  border: 1px solid #ff9348;
-  border-radius: 10px;
-  background: #ff9348;
-  color: #111722;
-  font-size: 12px;
-  font-weight: 900;
-  cursor: pointer;
-  transition: transform .2s;
-}
-
-.ks-chat-join-race:hover {
-  transform: translateY(-2px);
-}
-
-@media (max-width: 600px) {
   .ks-invite-modal {
     padding: 18px;
   }
@@ -705,5 +1203,36 @@
 
   .ks-invite-send {
     padding: 10px;
+  }
+}
+
+@media (max-width: 380px) {
+  .ks-mp-preview-heading {
+    font-size: 9px;
+  }
+
+  .ks-mp-room-benefits {
+    gap: 6px;
+  }
+
+  .ks-mp-room-benefits span {
+    padding: 8px;
+  }
+}
+
+/* ==========================================
+   REDUCED MOTION
+========================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  .ks-mp-mode-card,
+  .ks-mp-choice,
+  .multiplayer-car,
+  .multiplayer-leaderboard-item {
+    transition: none;
+  }
+
+  .multiplayer-countdown {
+    animation: none;
   }
 }
