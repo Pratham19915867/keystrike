@@ -1,21 +1,27 @@
 "use strict";
 
 /*
-  KEYSTRIKE V5
-  MULTIPLAYER ENGINE — TIMER & SYNC FIX
+=====================================================
+ KEYSTRIKE V5 — MULTIPLAYER ENGINE
+ RACE SYNC + WPM + LEADERBOARD FIX
 
-  - Configured race time limits
-  - Live scoreboard
-  - Reliable room refresh
-  - Countdown
-  - Animated vehicles
-  - Automatic completion checks
-  - Timed race rankings
-  - Room leave synchronization
-  - Host-only start / rematch
+ Features:
+ - Configured room creation
+ - Host-only start
+ - Shared race passage
+ - Supabase synchronized countdown
+ - Configured race duration
+ - Live WPM and progress
+ - Animated cars
+ - WPM-first timed rankings
+ - Classic finish-time rankings
+ - Race completion
+ - Race again
+ - Leave room
+ - Realtime and polling synchronization
 
-  Requires:
-  script.js loaded before this file.
+ Requires script.js before phase4.js.
+=====================================================
 */
 
 (() => {
@@ -28,22 +34,23 @@ if (typeof db === "undefined" || !db) {
 }
 
 const client = db;
-
-const PROGRESS_INTERVAL = 350;
-const REFRESH_INTERVAL = 1500;
-
 const input = el("multiplayerInput");
 
 if (!input) {
-  console.error("Multiplayer input not found");
+  console.error("KEYSTRIKE: Multiplayer input missing");
   return;
 }
+
+const PROGRESS_INTERVAL = 350;
+const REFRESH_INTERVAL = 1500;
+const CLOCK_SYNC_INTERVAL = 30000;
 
 let activeRound = null;
 
 let clockTimer = null;
 let syncTimer = null;
 let progressTimer = null;
+let clockSyncTimer = null;
 
 let raceChannel = null;
 
@@ -57,6 +64,7 @@ let lastProgressSent = 0;
 let lastSubmittedLength = 0;
 
 let resultsLoadedFor = null;
+let resultsLoadingFor = null;
 
 let engineGeneration = 0;
 
@@ -68,35 +76,37 @@ let leavingRoom = false;
 let loadingRound = false;
 let loadingRoundId = null;
 
-let refreshQueued = false;
 let refreshing = false;
-
+let refreshQueued = false;
 let checkingCompletion = false;
 
-let lastErrorMessage = "";
-let lastErrorTime = 0;
+let serverClockOffset = 0;
+let clockSynchronized = false;
+let clockSyncBusy = false;
 
-/* ======================================
+let lastError = "";
+let lastErrorAt = 0;
+
+/* =====================================================
    HELPERS
-====================================== */
+===================================================== */
 
 function notify(message, type = "") {
   mpMessage(message, type);
 }
 
 function reportError(error, prefix = "") {
-  const message = prefix + (error?.message || String(error));
+  const message =
+    prefix + (error?.message || String(error));
 
-  console.error(message);
-
-  const now = Date.now();
+  console.error("KEYSTRIKE:", message);
 
   if (
-    message !== lastErrorMessage ||
-    now - lastErrorTime > 5000
+    message !== lastError ||
+    Date.now() - lastErrorAt > 5000
   ) {
-    lastErrorMessage = message;
-    lastErrorTime = now;
+    lastError = message;
+    lastErrorAt = Date.now();
 
     notify(message, "error");
   }
@@ -110,9 +120,12 @@ function showView(view) {
     results: "multiplayerResults"
   };
 
-  Object.entries(views).forEach(([key, id]) => {
+  Object.entries(views).forEach(([name, id]) => {
     const node = el(id);
-    if (node) node.hidden = key !== view;
+
+    if (node) {
+      node.hidden = name !== view;
+    }
   });
 }
 
@@ -149,6 +162,62 @@ function raceLimit() {
     : 60;
 }
 
+/* =====================================================
+   SERVER CLOCK SYNCHRONIZATION
+===================================================== */
+
+function serverNow() {
+  return Date.now() + serverClockOffset;
+}
+
+async function synchronizeServerClock() {
+  if (!currentUser || clockSyncBusy) return;
+
+  clockSyncBusy = true;
+
+  try {
+    const before = Date.now();
+
+    const { data, error } = await client.rpc(
+      "keystrike_server_time"
+    );
+
+    const after = Date.now();
+
+    if (error) throw error;
+
+    const serverTime = new Date(data).getTime();
+
+    if (!Number.isFinite(serverTime)) {
+      throw new Error("Invalid server timestamp");
+    }
+
+    const midpoint = (before + after) / 2;
+
+    serverClockOffset = serverTime - midpoint;
+    clockSynchronized = true;
+
+    console.log(
+      "🕒 Server clock synchronized:",
+      Math.round(serverClockOffset),
+      "ms"
+    );
+
+  } catch (error) {
+    console.warn(
+      "Clock sync unavailable:",
+      error.message
+    );
+
+    // Fallback to device clock.
+    // Cross-device synchronization is less accurate
+    // until the Supabase time RPC is available.
+
+  } finally {
+    clockSyncBusy = false;
+  }
+}
+
 function startTimestamp() {
   return activeRound
     ? new Date(activeRound.started_at).getTime()
@@ -156,9 +225,11 @@ function startTimestamp() {
 }
 
 function raceElapsed() {
+  if (!activeRound) return 0;
+
   return Math.max(
     0,
-    (Date.now() - startTimestamp()) / 1000
+    (serverNow() - startTimestamp()) / 1000
   );
 }
 
@@ -168,6 +239,10 @@ function timeRemaining() {
     raceLimit() - raceElapsed()
   );
 }
+
+/* =====================================================
+   TIMERS AND STATE
+===================================================== */
 
 function clearRaceTimers() {
   clearInterval(clockTimer);
@@ -179,6 +254,7 @@ function clearRaceTimers() {
 
 function clearSyncTimer() {
   clearInterval(syncTimer);
+
   syncTimer = null;
 }
 
@@ -197,13 +273,18 @@ function resetRaceState() {
   lastSubmittedLength = 0;
 
   resultsLoadedFor = null;
+  resultsLoadingFor = null;
 
   loadingRound = false;
   loadingRoundId = null;
 
-  input.disabled = true;
   input.value = "";
+  input.disabled = true;
 }
+
+/* =====================================================
+   ROOM SETTINGS
+===================================================== */
 
 function getSelectedSettings() {
   return window.KeystrikeRaceSettings?.get() || {
@@ -215,9 +296,9 @@ function getSelectedSettings() {
   };
 }
 
-/* ======================================
+/* =====================================================
    CREATE ROOM
-====================================== */
+===================================================== */
 
 async function createConfiguredRoom() {
   if (enteringRoom || mpBusy) return;
@@ -231,9 +312,11 @@ async function createConfiguredRoom() {
   mpBusy = true;
 
   const button = el("createRoomButton");
+
   button.disabled = true;
 
   let createdRoomId = null;
+  let entered = false;
 
   try {
     const settings = getSelectedSettings();
@@ -242,19 +325,19 @@ async function createConfiguredRoom() {
       settings.game_mode === "custom" ||
       settings.text_mode === "custom"
     ) {
-      const text = settings.custom_passage || "";
+      const passage = settings.custom_passage || "";
 
       if (
-        text.trim().length < 30 ||
-        text.length > 1000
+        passage.trim().length < 30 ||
+        passage.length > 1000
       ) {
         throw new Error(
-          "Custom passage must be 30–1000 characters."
+          "Custom passage must contain 30–1000 characters."
         );
       }
     }
 
-    notify("Creating room...");
+    notify("Creating multiplayer room...");
 
     const { data, error } = await client.rpc(
       "create_race_room"
@@ -267,7 +350,7 @@ async function createConfiguredRoom() {
       : data;
 
     if (!created?.room_id) {
-      throw new Error("Room creation failed");
+      throw new Error("Room creation failed.");
     }
 
     createdRoomId = created.room_id;
@@ -280,7 +363,8 @@ async function createConfiguredRoom() {
         selected_text_mode: settings.text_mode,
         selected_time_limit: Number(settings.time_limit),
         selected_max_players: Number(settings.max_players),
-        selected_custom_passage: settings.custom_passage || null
+        selected_custom_passage:
+          settings.custom_passage || null
       }
     );
 
@@ -288,18 +372,33 @@ async function createConfiguredRoom() {
 
     await mpEnter(createdRoomId);
 
+    if (
+      mpRoom?.id !== createdRoomId ||
+      !mpPlayers.some(
+        player => player.user_id === currentUser?.id
+      )
+    ) {
+      throw new Error("Could not enter the created room.");
+    }
+
+    entered = true;
+
     showToast(
-      "Room created: " + created.code,
+      "🏁 Room created: " + created.code,
       "success"
     );
 
   } catch (error) {
     reportError(error, "Create room: ");
 
-    if (createdRoomId && mpRoom?.id !== createdRoomId) {
-      await client.rpc("leave_race_room", {
-        target_room_id: createdRoomId
-      });
+    if (createdRoomId && !entered) {
+      try {
+        await client.rpc("leave_race_room", {
+          target_room_id: createdRoomId
+        });
+      } catch (cleanupError) {
+        console.warn(cleanupError);
+      }
     }
 
   } finally {
@@ -309,9 +408,9 @@ async function createConfiguredRoom() {
   }
 }
 
-/* ======================================
+/* =====================================================
    LOBBY
-====================================== */
+===================================================== */
 
 function renderLobby() {
   if (!mpRoom || !currentUser) return;
@@ -336,9 +435,10 @@ function renderLobby() {
       "lobby-player-card lobby-player"
     );
 
-    if (player.is_ready) {
-      card.classList.add("ready");
-    }
+    card.classList.toggle(
+      "ready",
+      Boolean(player.is_ready)
+    );
 
     const avatar = makeElement(
       "div",
@@ -348,7 +448,7 @@ function renderLobby() {
     safeAvatar(
       avatar,
       player.profile?.avatar_url,
-      name.charAt(0).toUpperCase()
+      name[0]?.toUpperCase() || "K"
     );
 
     const info = makeElement(
@@ -361,16 +461,20 @@ function renderLobby() {
         "strong",
         "",
         name +
-        (player.user_id === currentUser.id
-          ? " (YOU)"
-          : "")
+        (
+          player.user_id === currentUser.id
+            ? " (YOU)"
+            : ""
+        )
       ),
       makeElement(
         "small",
         "",
-        (player.user_id === mpRoom.host_id
-          ? "👑 HOST · "
-          : "") +
+        (
+          player.user_id === mpRoom.host_id
+            ? "👑 HOST · "
+            : ""
+        ) +
         `⚡ ${player.profile?.best_wpm || 0} WPM`
       )
     );
@@ -386,6 +490,7 @@ function renderLobby() {
     );
 
     card.append(avatar, info, status);
+
     container.appendChild(card);
   });
 
@@ -394,13 +499,13 @@ function renderLobby() {
     i < Number(mpRoom.max_players || 4);
     i++
   ) {
-    const empty = makeElement(
-      "div",
-      "lobby-player-card lobby-empty-slot",
-      "+ Waiting for player..."
+    container.appendChild(
+      makeElement(
+        "div",
+        "lobby-player-card lobby-empty-slot",
+        "+ Waiting for player..."
+      )
     );
-
-    container.appendChild(empty);
   }
 
   const me = myPlayer();
@@ -419,28 +524,28 @@ function renderLobby() {
     startingRace ||
     mpBusy;
 
-  start.textContent = startingRace
-    ? "STARTING..."
-    : "🏁 START RACE →";
+  start.textContent =
+    startingRace
+      ? "STARTING..."
+      : "🏁 START RACE →";
 
   const ready = el("toggleReadyButton");
 
-  ready.textContent = me?.is_ready
-    ? "✓ READY"
-    : "I'M READY";
+  ready.textContent =
+    me?.is_ready
+      ? "✓ READY"
+      : "I'M READY";
 
   ready.disabled = !me || mpBusy;
 
-  const status = el("lobbyStatus");
-
   if (mpPlayers.length < 2) {
-    status.textContent =
+    el("lobbyStatus").textContent =
       "Waiting for another player...";
   } else if (!everyoneReady) {
-    status.textContent =
+    el("lobbyStatus").textContent =
       "Waiting for everyone to ready up...";
   } else {
-    status.textContent =
+    el("lobbyStatus").textContent =
       "✅ Everyone ready! Host can start.";
   }
 
@@ -459,15 +564,19 @@ function renderLobby() {
   container.before(summary);
 }
 
-/* ======================================
+/* =====================================================
    START RACE
-====================================== */
+===================================================== */
 
 async function startMultiplayerRace() {
-  if (!mpRoom || !currentUser || startingRace) return;
+  if (
+    !mpRoom ||
+    !currentUser ||
+    startingRace
+  ) return;
 
   if (!isHost()) {
-    notify("Only the host can start.", "error");
+    notify("Only the host can start the race.", "error");
     return;
   }
 
@@ -482,9 +591,12 @@ async function startMultiplayerRace() {
   startingRace = true;
 
   const button = el("startMultiplayerButton");
+
   button.disabled = true;
 
   try {
+    await synchronizeServerClock();
+
     const { error } = await client.rpc(
       "start_multiplayer_race",
       {
@@ -510,9 +622,9 @@ async function startMultiplayerRace() {
   }
 }
 
-/* ======================================
-   ROUND LOADING
-====================================== */
+/* =====================================================
+   LOAD ROUND
+===================================================== */
 
 async function loadActiveRound() {
   if (
@@ -552,13 +664,25 @@ async function loadActiveRound() {
     if (
       generation !== engineGeneration ||
       mpRoom?.id !== roomId ||
-      mpRoom.current_round_id !== roundId ||
-      mpRoom.status !== "racing"
+      mpRoom.current_round_id !== roundId
     ) return;
+
+    // Clear old race state without stopping
+    // the room synchronization interval.
 
     resetRaceState();
 
     activeRound = data;
+
+    await synchronizeServerClock();
+
+    if (
+      generation !== engineGeneration ||
+      mpRoom?.id !== roomId ||
+      mpRoom.current_round_id !== roundId ||
+      mpRoom.status !== "racing" ||
+      activeRound?.id !== roundId
+    ) return;
 
     prepareRace();
 
@@ -571,9 +695,9 @@ async function loadActiveRound() {
   }
 }
 
-/* ======================================
+/* =====================================================
    PREPARE RACE
-====================================== */
+===================================================== */
 
 function prepareRace() {
   if (!activeRound) return;
@@ -607,9 +731,9 @@ function prepareRace() {
   updateRaceClock();
 }
 
-/* ======================================
-   COUNTDOWN / TIMER
-====================================== */
+/* =====================================================
+   SYNCHRONIZED COUNTDOWN AND TIMER
+===================================================== */
 
 function updateRaceClock() {
   if (
@@ -619,7 +743,8 @@ function updateRaceClock() {
   ) return;
 
   const start = startTimestamp();
-  const now = Date.now();
+
+  const now = serverNow();
 
   const countdown = start - now;
 
@@ -695,9 +820,9 @@ function updateRaceClock() {
   }
 }
 
-/* ======================================
-   TRACKS / SCOREBOARD
-====================================== */
+/* =====================================================
+   LIVE TRACKS
+===================================================== */
 
 function updateTracks() {
   if (!mpRoom || !currentUser) return;
@@ -711,16 +836,32 @@ function updateTracks() {
   container.querySelectorAll(
     "[data-racer-id]"
   ).forEach(track => {
-    existing.set(track.dataset.racerId, track);
+    existing.set(
+      track.dataset.racerId,
+      track
+    );
   });
 
-  const fragment = document.createDocumentFragment();
+  const fragment =
+    document.createDocumentFragment();
 
   const ordered = [...mpPlayers].sort((a, b) => {
     if (a.finished_at && !b.finished_at) return -1;
     if (!a.finished_at && b.finished_at) return 1;
 
+    if (a.finished_at && b.finished_at) {
+      return (
+        new Date(a.finished_at) -
+        new Date(b.finished_at)
+      );
+    }
+
+    // Live WPM-first ordering for timed competition.
+
     return (
+      Number(b.current_wpm || 0) -
+      Number(a.current_wpm || 0)
+    ) || (
       Number(b.progress || 0) -
       Number(a.progress || 0)
     );
@@ -755,7 +896,9 @@ function updateTracks() {
       const car = makeElement(
         "span",
         "multiplayer-car",
-        index === 0 ? "🏎️" : "🚗"
+        player.user_id === currentUser.id
+          ? "🏎️"
+          : "🚗"
       );
 
       line.append(fill, car);
@@ -772,9 +915,11 @@ function updateTracks() {
       ".multiplayer-racer-name"
     ).textContent =
       `${index + 1}. ${playerName(player)}` +
-      (player.user_id === currentUser.id
-        ? " (YOU)"
-        : "");
+      (
+        player.user_id === currentUser.id
+          ? " (YOU)"
+          : ""
+      );
 
     const progress = clamp(
       Number(player.progress) || 0,
@@ -800,12 +945,14 @@ function updateTracks() {
   requestAnimationFrame(updateCarPositions);
 }
 
-function updateCarPositions() {
-  const tracks = document.querySelectorAll(
-    "#multiplayerTracks .multiplayer-track"
-  );
+/* =====================================================
+   ANIMATED CARS
+===================================================== */
 
-  tracks.forEach(track => {
+function updateCarPositions() {
+  document.querySelectorAll(
+    "#multiplayerTracks .multiplayer-track"
+  ).forEach(track => {
     const player = mpPlayers.find(
       item => item.user_id === track.dataset.racerId
     );
@@ -833,14 +980,17 @@ function updateCarPositions() {
       100
     );
 
+    car.style.transition =
+      "transform 0.45s ease-out";
+
     car.style.transform =
       `translateX(${available * progress / 100}px)`;
   });
 }
 
-/* ======================================
-   PASSAGE DISPLAY
-====================================== */
+/* =====================================================
+   PASSAGE HIGHLIGHTING
+===================================================== */
 
 function renderPassage() {
   if (!activeRound) return;
@@ -848,7 +998,8 @@ function renderPassage() {
   const typed = input.value;
   const passage = activeRound.passage;
 
-  const fragment = document.createDocumentFragment();
+  const fragment =
+    document.createDocumentFragment();
 
   for (let i = 0; i < passage.length; i++) {
     const span = document.createElement("span");
@@ -865,12 +1016,13 @@ function renderPassage() {
     fragment.appendChild(span);
   }
 
-  el("multiplayerPassage").replaceChildren(fragment);
+  el("multiplayerPassage")
+    .replaceChildren(fragment);
 }
 
-/* ======================================
+/* =====================================================
    CORRECT PREFIX
-====================================== */
+===================================================== */
 
 function correctPrefixLength() {
   if (!activeRound) return 0;
@@ -892,12 +1044,16 @@ function correctPrefixLength() {
 }
 
 /*
-  Existing Supabase RPC accepts only an exact
-  passage prefix.
+ Existing submit_race_progress RPC validates an
+ exact passage prefix.
 
-  Therefore, mistakes must be corrected before
-  server-confirmed progress can advance.
+ Mistakes must currently be corrected before
+ server-confirmed progress advances.
 */
+
+/* =====================================================
+   LOCAL WPM
+===================================================== */
 
 function updateLocalStats() {
   if (!activeRound) return;
@@ -914,7 +1070,9 @@ function updateLocalStats() {
   );
 
   const progress = Math.floor(
-    correct / activeRound.passage.length * 100
+    correct /
+    activeRound.passage.length *
+    100
   );
 
   el("multiplayerWpm").textContent =
@@ -924,16 +1082,17 @@ function updateLocalStats() {
     clamp(progress, 0, 100) + "%";
 }
 
-/* ======================================
-   PROGRESS SUBMISSION
-====================================== */
+/* =====================================================
+   SUBMIT PROGRESS
+===================================================== */
 
 async function submitProgress() {
   if (
     !activeRound ||
     !mpRoom ||
     !raceRunning ||
-    raceComplete
+    raceComplete ||
+    !currentUser
   ) return;
 
   if (progressBusy) {
@@ -951,7 +1110,8 @@ async function submitProgress() {
 
   const roomId = mpRoom.id;
   const roundId = activeRound.id;
-  const userId = currentUser?.id;
+  const userId = currentUser.id;
+  const generation = engineGeneration;
 
   const content =
     activeRound.passage.slice(0, correct);
@@ -969,6 +1129,7 @@ async function submitProgress() {
     if (error) throw error;
 
     if (
+      generation !== engineGeneration ||
       mpRoom?.id !== roomId ||
       activeRound?.id !== roundId ||
       currentUser?.id !== userId
@@ -982,8 +1143,13 @@ async function submitProgress() {
     const me = myPlayer();
 
     if (me) {
-      me.progress = data.progress;
-      me.current_wpm = data.wpm;
+      me.progress = Number(data.progress) || 0;
+      me.current_wpm = Number(data.wpm) || 0;
+
+      if (data.finished) {
+        me.finished_at =
+          new Date(serverNow()).toISOString();
+      }
     }
 
     el("multiplayerWpm").textContent =
@@ -1027,9 +1193,9 @@ async function submitProgress() {
   }
 }
 
-/* ======================================
-   COMPLETION CHECK
-====================================== */
+/* =====================================================
+   RACE COMPLETION
+===================================================== */
 
 async function checkRaceCompletion() {
   if (
@@ -1058,16 +1224,69 @@ async function checkRaceCompletion() {
     }
 
   } catch (error) {
-    reportError(error, "Race completion: ");
+    reportError(
+      error,
+      "Race completion: "
+    );
 
   } finally {
     checkingCompletion = false;
   }
 }
 
-/* ======================================
-   RESULTS / LEADERBOARD
-====================================== */
+/* =====================================================
+   WINNER RANKING
+===================================================== */
+
+function rankPlayers(players, resultMap) {
+  return [...players].sort((a, b) => {
+    const resultA = resultMap.get(a.user_id);
+    const resultB = resultMap.get(b.user_id);
+
+    // Completed racers beat unfinished racers.
+
+    if (resultA && !resultB) return -1;
+    if (!resultA && resultB) return 1;
+
+    // Completed racers rank by finish time.
+
+    if (resultA && resultB) {
+      return (
+        new Date(resultA.finish_time) -
+        new Date(resultB.finish_time)
+      );
+    }
+
+    // Timed-out racers rank by WPM first.
+
+    const wpmDifference =
+      Number(b.current_wpm || 0) -
+      Number(a.current_wpm || 0);
+
+    if (wpmDifference !== 0) {
+      return wpmDifference;
+    }
+
+    // Progress breaks a WPM tie.
+
+    const progressDifference =
+      Number(b.progress || 0) -
+      Number(a.progress || 0);
+
+    if (progressDifference !== 0) {
+      return progressDifference;
+    }
+
+    // Stable tie-breaker.
+
+    return String(a.user_id)
+      .localeCompare(String(b.user_id));
+  });
+}
+
+/* =====================================================
+   RESULTS
+===================================================== */
 
 async function renderResults() {
   if (!mpRoom?.current_round_id) return;
@@ -1085,10 +1304,12 @@ async function renderResults() {
 
   clearRaceTimers();
 
-  if (resultsLoadedFor === roundId) return;
+  if (
+    resultsLoadedFor === roundId ||
+    resultsLoadingFor === roundId
+  ) return;
 
-  // Prevent duplicate leaderboard requests.
-  resultsLoadedFor = roundId;
+  resultsLoadingFor = roundId;
 
   try {
     const { data, error } = await client.rpc(
@@ -1103,7 +1324,8 @@ async function renderResults() {
     if (
       generation !== engineGeneration ||
       mpRoom?.id !== roomId ||
-      mpRoom.current_round_id !== roundId
+      mpRoom.current_round_id !== roundId ||
+      mpRoom.status !== "finished"
     ) return;
 
     const finishedResults = data || [];
@@ -1115,40 +1337,20 @@ async function renderResults() {
       ])
     );
 
-    const players = [...mpPlayers];
+    const players = rankPlayers(
+      mpPlayers,
+      resultMap
+    );
 
-    /*
-      Finished racers rank by completion time.
-      Remaining racers rank by progress, then WPM.
-    */
-
-    players.sort((a, b) => {
-      const resultA = resultMap.get(a.user_id);
-      const resultB = resultMap.get(b.user_id);
-
-      if (resultA && !resultB) return -1;
-      if (!resultA && resultB) return 1;
-
-      if (resultA && resultB) {
-        return new Date(resultA.finish_time) -
-          new Date(resultB.finish_time);
-      }
-
-      return (
-        Number(b.progress || 0) -
-        Number(a.progress || 0)
-      ) || (
-        Number(b.current_wpm || 0) -
-        Number(a.current_wpm || 0)
-      );
-    });
-
-    const container = el("multiplayerLeaderboard");
+    const container =
+      el("multiplayerLeaderboard");
 
     container.replaceChildren();
 
     players.forEach((player, index) => {
-      const result = resultMap.get(player.user_id);
+      const result = resultMap.get(
+        player.user_id
+      );
 
       const item = makeElement(
         "div",
@@ -1180,7 +1382,11 @@ async function renderResults() {
         "span",
         "multiplayer-leaderboard-wpm",
         `${result?.wpm ?? player.current_wpm ?? 0} WPM · ` +
-        `${result ? "FINISHED" : (player.progress || 0) + "%"}`
+        (
+          result
+            ? "FINISHED"
+            : `${player.progress || 0}%`
+        )
       );
 
       item.append(position, name, speed);
@@ -1191,8 +1397,13 @@ async function renderResults() {
     const winner = players[0];
 
     if (winner) {
+      const winningWpm =
+        resultMap.get(winner.user_id)?.wpm ??
+        winner.current_wpm ??
+        0;
+
       notify(
-        "🏆 WINNER: " + playerName(winner),
+        `🏆 WINNER: ${playerName(winner)} — ${winningWpm} WPM!`,
         "success"
       );
 
@@ -1208,16 +1419,21 @@ async function renderResults() {
     button.hidden = !isHost();
     button.disabled = false;
 
-  } catch (error) {
-    resultsLoadedFor = null;
+    resultsLoadedFor = roundId;
 
+  } catch (error) {
     reportError(error, "Leaderboard: ");
+
+  } finally {
+    if (resultsLoadingFor === roundId) {
+      resultsLoadingFor = null;
+    }
   }
 }
 
-/* ======================================
+/* =====================================================
    RACE AGAIN
-====================================== */
+===================================================== */
 
 async function raceAgain() {
   if (
@@ -1229,6 +1445,7 @@ async function raceAgain() {
   resettingRoom = true;
 
   const button = el("raceAgainButton");
+
   button.disabled = true;
 
   try {
@@ -1251,17 +1468,18 @@ async function raceAgain() {
     await mpRefresh();
 
   } catch (error) {
-    reportError(error, "Rematch: ");
+    reportError(error, "Race again: ");
 
   } finally {
     resettingRoom = false;
+
     button.disabled = false;
   }
 }
 
-/* ======================================
+/* =====================================================
    MAIN RENDER
-====================================== */
+===================================================== */
 
 mpRender = function () {
   if (!mpRoom || !currentUser) return;
@@ -1295,18 +1513,9 @@ mpRender = function () {
   }
 };
 
-/* ======================================
-   RELIABLE REFRESH
-====================================== */
-
-/*
-  Keep the original database-loading logic
-  from script.js.
-
-  This wrapper queues refresh requests instead
-  of losing them when multiple Realtime events
-  arrive together.
-*/
+/* =====================================================
+   REFRESH QUEUE
+===================================================== */
 
 const originalRefresh = mpRefresh;
 
@@ -1337,9 +1546,9 @@ mpRefresh = async function () {
   }
 };
 
-/* ======================================
+/* =====================================================
    ROOM ENTRY
-====================================== */
+===================================================== */
 
 const originalEnter = mpEnter;
 
@@ -1351,12 +1560,14 @@ mpEnter = async function (roomId) {
 
   await originalEnter(roomId);
 
-  if (!mpRoom || mpRoom.id !== roomId) {
-    return;
-  }
+  if (
+    !mpRoom ||
+    mpRoom.id !== roomId
+  ) return;
 
   if (raceChannel) {
     await client.removeChannel(raceChannel);
+
     raceChannel = null;
   }
 
@@ -1379,11 +1590,6 @@ mpEnter = async function (roomId) {
     )
     .subscribe();
 
-  /*
-    Important fix:
-    The sync timer is NOT cleared by prepareRace.
-  */
-
   syncTimer = setInterval(() => {
     if (
       mpRoom?.id === roomId &&
@@ -1393,12 +1599,14 @@ mpEnter = async function (roomId) {
     }
   }, REFRESH_INTERVAL);
 
+  await synchronizeServerClock();
+
   await mpRefresh();
 };
 
-/* ======================================
-   ROOM CLEANUP
-====================================== */
+/* =====================================================
+   CLEANUP
+===================================================== */
 
 const originalCleanup = mpCleanup;
 
@@ -1406,33 +1614,30 @@ mpCleanup = async function () {
   engineGeneration++;
 
   clearSyncTimer();
+
   resetRaceState();
 
   if (raceChannel) {
     const channel = raceChannel;
+
     raceChannel = null;
 
     try {
       await client.removeChannel(channel);
     } catch (error) {
-      console.warn("Race channel cleanup:", error);
+      console.warn(
+        "Race channel cleanup:",
+        error
+      );
     }
   }
 
   await originalCleanup();
 };
 
-/* ======================================
+/* =====================================================
    LEAVE ROOM
-====================================== */
-
-/*
-  The original script.js already contains
-  leave_race_room RPC + cleanup.
-
-  We intercept the button to prevent duplicate
-  leave requests and request immediate cleanup.
-*/
+===================================================== */
 
 async function leaveMultiplayerRoom() {
   if (
@@ -1444,6 +1649,7 @@ async function leaveMultiplayerRoom() {
   leavingRoom = true;
 
   const roomId = mpRoom.id;
+
   const button = el("leaveRoomButton");
 
   button.disabled = true;
@@ -1460,20 +1666,24 @@ async function leaveMultiplayerRoom() {
 
     await mpCleanup();
 
-    notify("You left the room.", "success");
+    notify(
+      "You left the room.",
+      "success"
+    );
 
   } catch (error) {
     reportError(error, "Leave room: ");
 
   } finally {
     leavingRoom = false;
+
     button.disabled = false;
   }
 }
 
-/* ======================================
-   BUTTON HANDLERS
-====================================== */
+/* =====================================================
+   BUTTON EVENTS
+===================================================== */
 
 function captureButton(id, handler) {
   const button = el(id);
@@ -1512,9 +1722,9 @@ captureButton(
   leaveMultiplayerRoom
 );
 
-/* ======================================
+/* =====================================================
    TYPING INPUT
-====================================== */
+===================================================== */
 
 input.addEventListener("input", () => {
   if (
@@ -1533,6 +1743,7 @@ input.addEventListener("input", () => {
   }
 
   renderPassage();
+
   updateLocalStats();
 
   const now = Date.now();
@@ -1550,14 +1761,15 @@ input.addEventListener("input", () => {
 
     progressTimer = setTimeout(() => {
       lastProgressSent = Date.now();
+
       submitProgress();
     }, PROGRESS_INTERVAL);
   }
 });
 
-/* ======================================
-   PERIODIC RACE CHECK
-====================================== */
+/* =====================================================
+   AUTOMATIC RACE CHECKS
+===================================================== */
 
 setInterval(() => {
   if (
@@ -1569,9 +1781,21 @@ setInterval(() => {
   checkRaceCompletion();
 }, 2000);
 
-/* ======================================
-   BROWSER VISIBILITY
-====================================== */
+/* =====================================================
+   CLOCK RESYNCHRONIZATION
+===================================================== */
+
+clockSyncTimer = setInterval(() => {
+  if (currentUser) {
+    synchronizeServerClock();
+  }
+}, CLOCK_SYNC_INTERVAL);
+
+synchronizeServerClock();
+
+/* =====================================================
+   VISIBILITY
+===================================================== */
 
 document.addEventListener(
   "visibilitychange",
@@ -1580,6 +1804,8 @@ document.addEventListener(
       document.visibilityState === "visible" &&
       mpRoom
     ) {
+      synchronizeServerClock();
+
       mpRefresh();
 
       if (activeRound) {
@@ -1589,21 +1815,21 @@ document.addEventListener(
   }
 );
 
-/* ======================================
+/* =====================================================
    RESIZE
-====================================== */
+===================================================== */
 
 window.addEventListener(
   "resize",
   updateCarPositions
 );
 
-/* ======================================
+/* =====================================================
    READY
-====================================== */
+===================================================== */
 
 console.log(
-  "%c🏎 KEYSTRIKE V5 MULTIPLAYER FIX LOADED",
+  "%c🏎 KEYSTRIKE V5 MULTIPLAYER SYNC ENGINE READY",
   "color:#73e0a3;font-size:18px;font-weight:bold"
 );
 
