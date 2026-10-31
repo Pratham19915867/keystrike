@@ -1,0 +1,167 @@
+/* ==========================================
+   KEYSTRIKE V5
+   COMPACT RACE + MOBILE KEYBOARD FIX
+========================================== */
+
+/* Keep the passage compact on desktop too */
+
+#multiplayerPassage {
+  box-sizing: border-box !important;
+
+  display: block !important;
+  width: 100% !important;
+
+  height: 150px !important;
+  min-height: 150px !important;
+  max-height: 150px !important;
+
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+
+  padding: 15px 18px !important;
+
+  font-family:
+    "JetBrains Mono",
+    Consolas,
+    monospace !important;
+
+  font-size: 19px !important;
+  line-height: 1.65 !important;
+
+  white-space: pre-wrap !important;
+  overflow-wrap: anywhere !important;
+
+  scroll-behavior: auto !important;
+  overscroll-behavior: contain;
+
+  border-radius: 14px !important;
+  scrollbar-width: thin;
+}
+
+/* Compact race tracks */
+
+#multiplayerTracks {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 8px !important;
+  margin-bottom: 12px !important;
+}
+
+.multiplayer-track {
+  padding: 8px 10px !important;
+  min-height: 0 !important;
+}
+
+.multiplayer-racer-name {
+  font-size: 12px !important;
+}
+
+.multiplayer-track-line {
+  min-height: 28px !important;
+}
+
+.multiplayer-car {
+  font-size: 20px !important;
+}
+
+/* Compact typing input */
+
+#multiplayerInput {
+  display: block !important;
+  box-sizing: border-box !important;
+
+  width: 100% !important;
+  height: 68px !important;
+  min-height: 68px !important;
+  max-height: 68px !important;
+
+  padding: 12px 14px !important;
+  margin-top: 10px !important;
+
+  font-size: 16px !important;
+  line-height: 1.4 !important;
+
+  resize: none !important;
+}
+
+/* Mobile */
+
+@media (max-width: 768px) {
+
+  #multiplayerRace {
+    min-width: 0 !important;
+    padding: 12px !important;
+  }
+
+  #multiplayerPassage {
+    height: 108px !important;
+    min-height: 108px !important;
+    max-height: 108px !important;
+
+    padding: 10px 12px !important;
+
+    font-size: 15px !important;
+    line-height: 1.65 !important;
+  }
+
+  #multiplayerInput {
+    height: 54px !important;
+    min-height: 54px !important;
+    max-height: 54px !important;
+
+    font-size: 16px !important;
+    padding: 10px 12px !important;
+  }
+
+  #multiplayerTracks {
+    gap: 5px !important;
+  }
+
+  .multiplayer-track {
+    padding: 6px 8px !important;
+  }
+
+  .multiplayer-racer-name {
+    font-size: 11px !important;
+  }
+
+  .multiplayer-car {
+    font-size: 17px !important;
+  }
+
+  /* Don't cover the typing input */
+
+  #ksMobileLeaveButton {
+    bottom: 90px !important;
+    right: 10px !important;
+
+    padding: 9px 12px !important;
+
+    font-size: 10px !important;
+    opacity: .85;
+  }
+
+  body.ks-mp-typing #ksMobileLeaveButton {
+    display: none !important;
+  }
+}
+
+/* Small phones */
+
+@media (max-width: 420px) {
+
+  #multiplayerPassage {
+    height: 96px !important;
+    min-height: 96px !important;
+    max-height: 96px !important;
+
+    font-size: 14px !important;
+    line-height: 1.6 !important;
+  }
+
+  #multiplayerInput {
+    height: 50px !important;
+    min-height: 50px !important;
+    max-height: 50px !important;
+  }
+}
